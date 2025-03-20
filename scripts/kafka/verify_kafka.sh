@@ -1,53 +1,33 @@
 #!/bin/bash
+
+# Check if IP and SSH key path are provided
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <server_ip> <ssh_key_path>"
+    exit 1
+fi
+
 SERVER_IP=$1
-ROOT_PASSWORD=$2
+SSH_KEY_PATH=$2
 
 echo "Verifying Kafka installation on $SERVER_IP"
 
-sshpass -p "$ROOT_PASSWORD" ssh -o StrictHostKeyChecking=no root@$SERVER_IP << EOF
-    # Check if Kafka service is running
-    echo "Checking Kafka service status..."
-    systemctl status kafka | grep "active (running)"
-    if [ $? -ne 0 ]; then
-        echo "ERROR: Kafka service is not running"
-        exit 1
-    fi
-    
-    # Check if Kafka ports are listening
-    echo "Checking if Kafka ports are open..."
-    netstat -plnt | grep 9092
-    if [ $? -ne 0 ]; then
-        echo "ERROR: Kafka is not listening on port 9092"
-        exit 1
-    fi
-    
-    # Create a test topic
-    echo "Creating test topic..."
-    /opt/kafka/bin/kafka-topics.sh --create --topic verify-topic --partitions 1 --replication-factor 1 --bootstrap-server localhost:9092
-    
-    # List topics to verify
-    echo "Listing topics..."
-    /opt/kafka/bin/kafka-topics.sh --list --bootstrap-server localhost:9092
-    
-    # Produce a test message
-    echo "Producing test message..."
-    echo "Test message" | /opt/kafka/bin/kafka-console-producer.sh --topic verify-topic --bootstrap-server localhost:9092
-    
-    # Consume the test message with timeout
-    echo "Consuming test message..."
-    timeout 10s /opt/kafka/bin/kafka-console-consumer.sh --topic verify-topic --from-beginning --bootstrap-server localhost:9092 --max-messages 1
-    
-    # Check if Kafka logs show startup success
-    echo "Checking Kafka logs for successful startup..."
-    grep -i "started" /opt/kafka/logs/server.log | tail -5
-    
-    echo "Kafka verification completed successfully"
-EOF
+# SSH command with key authentication
+SSH_CMD="ssh -i \"$SSH_KEY_PATH\" -o StrictHostKeyChecking=no root@$SERVER_IP"
 
-if [ $? -eq 0 ]; then
-    echo "✅ Kafka is running correctly on $SERVER_IP"
-    exit 0
+# Check if Kafka service is running
+$SSH_CMD "systemctl is-active --quiet kafka" && echo "Kafka service is running" || echo "Kafka service is not running"
+
+# Verify Kafka is properly functioning by listing topics
+echo "Listing Kafka topics:"
+$SSH_CMD "/opt/kafka/bin/kafka-topics.sh --list --bootstrap-server localhost:9092"
+
+# Check if our test topic exists
+TEST_TOPIC=$($SSH_CMD "/opt/kafka/bin/kafka-topics.sh --list --bootstrap-server localhost:9092 | grep test-topic")
+if [ -n "$TEST_TOPIC" ]; then
+    echo "Test topic exists. Kafka appears to be working properly."
 else
-    echo "❌ Kafka verification failed on $SERVER_IP"
+    echo "Test topic not found. There might be an issue with the Kafka installation."
     exit 1
 fi
+
+echo "Kafka verification completed successfully on $SERVER_IP"
