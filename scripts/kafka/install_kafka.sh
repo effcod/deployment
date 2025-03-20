@@ -1,8 +1,18 @@
 #!/bin/bash
-SERVER_IP=$1
-ROOT_PASSWORD=$2
 
-echo "Installing Kafka in KRaft mode on $SERVER_IP"
+# Check if IP and SSH key path are provided
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <server_ip> <ssh_key_path>"
+    exit 1
+fi
+
+SERVER_IP=$1
+SSH_KEY_PATH=$2
+
+echo "Installing Kafka in KRaft mode on $SERVER_IP using SSH key authentication"
+
+# SSH command with key authentication
+SSH_CMD="ssh -i \"$SSH_KEY_PATH\" -o StrictHostKeyChecking=no root@$SERVER_IP"
 
 # Copy configuration files to a temporary directory
 echo "Creating temporary directory for configuration files"
@@ -16,14 +26,14 @@ sed -i "s/%SERVER_IP%/$SERVER_IP/g" $TMP_DIR/server.properties
 
 # Copy configuration files to the server
 echo "Copying configuration files to server $SERVER_IP"
-sshpass -p "$ROOT_PASSWORD" scp -o StrictHostKeyChecking=no $TMP_DIR/server.properties root@$SERVER_IP:/tmp/server.properties
-sshpass -p "$ROOT_PASSWORD" scp -o StrictHostKeyChecking=no $TMP_DIR/kafka.service root@$SERVER_IP:/tmp/kafka.service
+scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no $TMP_DIR/server.properties root@$SERVER_IP:/tmp/server.properties
+scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no $TMP_DIR/kafka.service root@$SERVER_IP:/tmp/kafka.service
 
 # Clean up temporary files
 rm -rf $TMP_DIR
 
 # Run installation on server
-sshpass -p "$ROOT_PASSWORD" ssh -o StrictHostKeyChecking=no root@$SERVER_IP << EOF
+$SSH_CMD << EOF
     # Update system
     apt-get update -y
     apt-get upgrade -y
