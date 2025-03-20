@@ -7,7 +7,7 @@ on:
         description: 'Server IP address'
         required: true
       ssh_private_key:
-        description: 'SSH private key for server access (base64 encoded)'
+        description: 'SSH private key for server access (raw or base64 encoded)'
         required: true
         type: string
 
@@ -21,9 +21,24 @@ jobs:
       - name: Setup SSH Key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ inputs.ssh_private_key }}" | base64 -d > ~/.ssh/id_hetzner
+          
+          # Check if the key looks like base64 (only contains base64 characters and is 1+ lines)
+          if [[ "${{ inputs.ssh_private_key }}" =~ ^[A-Za-z0-9+/=[:space:]]*$ && ! "${{ inputs.ssh_private_key }}" =~ -----BEGIN ]]; then
+            # It's base64 encoded - decode it
+            echo "Key appears to be base64 encoded, decoding..."
+            echo "${{ inputs.ssh_private_key }}" | base64 -d > ~/.ssh/id_hetzner
+          else
+            # It's raw - use directly
+            echo "Key appears to be raw, using directly..."
+            echo "${{ inputs.ssh_private_key }}" > ~/.ssh/id_hetzner
+          fi
+          
           chmod 600 ~/.ssh/id_hetzner
           ssh-keyscan -H ${{ inputs.server_ip }} >> ~/.ssh/known_hosts
+          
+          # Debug info (without revealing the key)
+          ls -la ~/.ssh/id_hetzner
+          echo "SSH key size: $(wc -c < ~/.ssh/id_hetzner) bytes"
   
       - name: Install Kafka
         env:
