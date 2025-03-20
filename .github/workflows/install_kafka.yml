@@ -6,8 +6,16 @@ on:
       server_ip:
         description: 'Server IP address'
         required: true
+      ssh_key_format:
+        description: 'SSH key format'
+        required: true
+        type: choice
+        options:
+          - raw
+          - path
+        default: 'raw'
       ssh_private_key:
-        description: 'SSH private key for server access (raw or base64 encoded)'
+        description: 'SSH private key (paste full key including BEGIN and END lines) or path to key in artifact'
         required: true
         type: string
 
@@ -17,17 +25,38 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      - name: Download server credentials artifact
+        if: inputs.ssh_key_format == 'path'
+        uses: actions/download-artifact@v4
+        with:
+          name: server-credentials
+          path: ~/server-credentials
 
       - name: Setup SSH Key
         run: |
+          # Create .ssh directory with proper permissions
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
-          # Write the key with proper line breaks
-          # First save to a temporary file to avoid showing key in logs
-          cat > ~/.ssh/id_hetzner << 'EOT'
-          ${{ inputs.ssh_private_key }}
-          EOT
+          # Write the SSH key based on selected format
+          if [[ "${{ inputs.ssh_key_format }}" == "raw" ]]; then
+            echo "Using raw SSH key input"
+            # Save key to file, preserving all line breaks and formatting
+            cat > ~/.ssh/id_hetzner << 'EOT'
+            ${{ inputs.ssh_private_key }}
+            EOT
+          else
+            echo "Using key from artifact path: ${{ inputs.ssh_private_key }}"
+            if [[ -f ~/server-credentials/${{ inputs.ssh_private_key }} ]]; then
+              cp ~/server-credentials/${{ inputs.ssh_private_key }} ~/.ssh/id_hetzner
+            else
+              echo "Error: SSH key file not found at specified path"
+              echo "Available files in artifact:"
+              ls -la ~/server-credentials/
+              exit 1
+            fi
+          fi
           
           # Set proper permissions
           chmod 600 ~/.ssh/id_hetzner
@@ -35,28 +64,25 @@ jobs:
           # Add server to known hosts
           ssh-keyscan -H ${{ inputs.server_ip }} >> ~/.ssh/known_hosts
           
-          # Validate the key - this will show if it's valid without revealing content
-          if ssh-keygen -l -f ~/.ssh/id_hetzner &> /dev/null; then
-            echo "✅ SSH key is valid"
-          else
-            echo "❌ SSH key appears to be invalid or in wrong format"
-            echo "Attempting to fix key format..."
-            
-            # Sometimes keys need proper line breaks - let's ensure they're present
-            sed -i 's/\\n/\n/g' ~/.ssh/id_hetzner
-            
-            # Check again
-            if ssh-keygen -l -f ~/.ssh/id_hetzner &> /dev/null; then
-              echo "✅ SSH key fixed and is now valid"
-            else
-              echo "❌ Still unable to read the SSH key. Please verify the provided key."
-              exit 1
-            fi
+          # Diagnosing the key (without revealing content)
+          echo "Key file stats:"
+          stat ~/.ssh/id_hetzner
+          echo "Key file size: $(wc -c < ~/.ssh/id_hetzner) bytes"
+          echo "Key file line count: $(wc -l < ~/.ssh/id_hetzner) lines"
+          echo "Key file first line chars: $(head -1 ~/.ssh/id_hetzner | wc -c) chars"
+          
+          # Check if key is valid
+          if ! ssh-keygen -l -f ~/.ssh/id_hetzner &> /dev/null; then
+            echo "Invalid key format. The key should look like:"
+            echo "-----BEGIN OPENSSH PRIVATE KEY-----"
+            echo "[key content here with proper line breaks]"
+            echo "-----END OPENSSH PRIVATE KEY-----"
+            exit 1
           fi
           
-          # Test connection
+          # Test connection with more verbose output
           echo "Testing SSH connection..."
-          if ssh -o StrictHostKeyChecking=no -o BatchMode=yes -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "echo 'SSH connection successful'"; then
+          if ssh -v -o StrictHostKeyChecking=no -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "echo 'SSH connection successful'"; then
             echo "✅ SSH connection test successful"
           else
             echo "❌ SSH connection test failed"
