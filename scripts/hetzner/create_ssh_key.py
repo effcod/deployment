@@ -28,18 +28,18 @@ def create_ssh_key():
     # Check if a key with this name already exists
     try:
         existing_key = client.ssh_keys.get_by_name(key_name)
-        if existing_key:
-            print(f"SSH key with name '{key_name}' already exists, updating it...")
-            # Update the key with new public key
-            existing_key.update(public_key=public_key)
-            print(f"SSH key updated successfully: {key_name}")
-            return key_name
+        if (existing_key):
+            print(f"SSH key with name '{key_name}' already exists, deleting it...")
+            # Delete the existing key
+            existing_key.delete()
+            print(f"Existing SSH key deleted")
     except Exception as e:
-        # Key doesn't exist, we'll create a new one
-        pass
+        # Key doesn't exist or error occurred, we'll proceed to create a new one
+        print(f"Note: {str(e)}")
     
     # Create new SSH key
     try:
+        print(f"Creating new SSH key '{key_name}'...")
         response = client.ssh_keys.create(name=key_name, public_key=public_key)
         # The response structure might vary depending on the library version
         # Let's handle different possible structures
