@@ -13,36 +13,49 @@ def get_server_config():
     
     # Try to get timeout from env var, default to 5 minutes (300 seconds)
     try:
-        max_wait_time = int(os.environ.get("HCLOUD_SERVER_WAIT_TIMEOUT", "300"))
+        max_wait_time = int(os.environ.get("HCLOUD_SERVER_WAIT_TIMEOUT", "120"))
     except ValueError:
-        print("Warning: Invalid HCLOUD_SERVER_WAIT_TIMEOUT value, using default of 300 seconds")
-        max_wait_time = 300
+        print("Warning: Invalid HCLOUD_SERVER_WAIT_TIMEOUT value, using default of 120 seconds")
+        max_wait_time = 120
     
     config = {
         "token": token,
         "name": os.environ.get("HCLOUD_SERVER_NAME", "my-app-server"),
-        "server_type": os.environ.get("HCLOUD_SERVER_TYPE", "cx21"),
+        "server_type": os.environ.get("HCLOUD_SERVER_TYPE", "cx22"),
         "image": os.environ.get("HCLOUD_IMAGE", "ubuntu-24.04"),
+        "ssh_key_name": os.environ.get("HCLOUD_SSH_KEY_NAME", None),
         "max_wait_time": max_wait_time
     }
     return config
 
-def create_hcloud_server(token, name, server_type, image, max_wait_time=300):
+def create_hcloud_server(token, name, server_type, image, ssh_key_name=None, max_wait_time=300):
     """Create a Hetzner Cloud server with the given parameters"""
     client = get_hcloud_client(token)
     
     print(f"Creating server '{name}' with type '{server_type}' and image '{image}'...")
     
-    # Capture the full response
-    response = client.servers.create(
-        name=name,
-        server_type=ServerType(name=server_type),
-        image=Image(name=image),
-    )
+    # Prepare server creation parameters
+    create_params = {
+        "name": name,
+        "server_type": ServerType(name=server_type),
+        "image": Image(name=image),
+    }
     
-    # Get the server object and root password
+    # Add SSH key if provided
+    if ssh_key_name:
+        print(f"Using SSH key: {ssh_key_name}")
+        ssh_key = client.ssh_keys.get_by_name(ssh_key_name)
+        if ssh_key:
+            create_params["ssh_keys"] = [ssh_key]
+        else:
+            print(f"Warning: SSH key '{ssh_key_name}' not found. Server will be created with password authentication.")
+    
+    # Capture the full response
+    response = client.servers.create(**create_params)
+    
+    # Get the server object and root password (if no SSH key was used)
     server = response.server
-    root_password = response.root_password
+    root_password = response.root_password  # Will be None if SSH key was used
 
     print(f"Server created with ID: {server.id}")
     
@@ -70,7 +83,7 @@ if __name__ == "__main__":
     config = get_server_config()
     
     try:
-        print(f"Using configuration: Server name='{config['name']}', type='{config['server_type']}', image='{config['image']}', timeout={config['max_wait_time']}s")
+        print(f"Using configuration: Server name='{config['name']}', type='{config['server_type']}', image='{config['image']}', ssh_key='{config['ssh_key_name']}', timeout={config['max_wait_time']}s")
         
         # Get both server and root_password from the function
         server, root_password = create_hcloud_server(
@@ -78,12 +91,16 @@ if __name__ == "__main__":
             name=config["name"],
             server_type=config["server_type"],
             image=config["image"],
+            ssh_key_name=config["ssh_key_name"],
             max_wait_time=config["max_wait_time"]
         )
         
         # Output in GitHub Actions compatible format
         print(f"SERVER_IP={server.public_net.ipv4.ip}")
-        print(f"ROOT_PASS={root_password}")
+        if root_password:
+            print(f"ROOT_PASS={root_password}")
+        else:
+            print("Using SSH key authentication (no password)")
         
         # Also print for human readability in logs
         print(f"Server deployed successfully at IP: {server.public_net.ipv4.ip}")
