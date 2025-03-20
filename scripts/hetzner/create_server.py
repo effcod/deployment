@@ -33,12 +33,17 @@ def create_hcloud_server(token, name, server_type, image, max_wait_time=300):
     
     print(f"Creating server '{name}' with type '{server_type}' and image '{image}'...")
     
-    server = client.servers.create(
+    # Capture the full response
+    response = client.servers.create(
         name=name,
         server_type=ServerType(name=server_type),
         image=Image(name=image),
-    ).server
+    )
     
+    # Get the server object and root password
+    server = response.server
+    root_password = response.root_password
+
     print(f"Server created with ID: {server.id}")
     
     # Wait for server to be ready with timeout
@@ -57,7 +62,7 @@ def create_hcloud_server(token, name, server_type, image, max_wait_time=300):
         
         if server.status == "running":
             print(f"Server is ready after {elapsed_formatted} seconds")
-            return server
+            return server, root_password  # Return both server and password
         
         time.sleep(5)
 
@@ -67,7 +72,8 @@ if __name__ == "__main__":
     try:
         print(f"Using configuration: Server name='{config['name']}', type='{config['server_type']}', image='{config['image']}', timeout={config['max_wait_time']}s")
         
-        server = create_hcloud_server(
+        # Get both server and root_password from the function
+        server, root_password = create_hcloud_server(
             token=config["token"],
             name=config["name"],
             server_type=config["server_type"],
@@ -77,7 +83,7 @@ if __name__ == "__main__":
         
         # Output in GitHub Actions compatible format
         print(f"SERVER_IP={server.public_net.ipv4.ip}")
-        print(f"ROOT_PASS={server.root_password}")
+        print(f"ROOT_PASS={root_password}")
         
         # Also print for human readability in logs
         print(f"Server deployed successfully at IP: {server.public_net.ipv4.ip}")
