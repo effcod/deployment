@@ -1,0 +1,48 @@
+name: Kafka Installation
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_ip:
+        description: 'Server IP address'
+        required: true
+      root_password:
+        description: 'Server root password'
+        required: true
+        type: string
+
+jobs:
+  install-kafka:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass
+  
+      - name: Install Kafka
+        env:
+          SERVER_IP: ${{ inputs.server_ip }}
+          ROOT_PASS: ${{ inputs.root_password }}
+        run: |
+          echo "Starting Kafka installation on server $SERVER_IP"
+          ls -la config/kafka/
+          chmod +x scripts/kafka/install_kafka.sh
+          ./scripts/kafka/install_kafka.sh $SERVER_IP "$ROOT_PASS"
+          echo "Kafka installation completed"
+      
+      - name: Verify Kafka Installation
+        env:
+          SERVER_IP: ${{ inputs.server_ip }}
+          ROOT_PASS: ${{ inputs.root_password }}
+        run: |
+          echo "Verifying Kafka installation on server $SERVER_IP"
+          chmod +x scripts/kafka/verify_kafka.sh
+          ./scripts/kafka/verify_kafka.sh $SERVER_IP "$ROOT_PASS"
+          echo "Kafka verification completed"
+          
+      - name: Post installation message
+        run: |
+          echo "Kafka successfully deployed to server ${{ inputs.server_ip }}"
+          echo "You can connect to the server with: ssh root@${{ inputs.server_ip }}"

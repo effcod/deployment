@@ -1,4 +1,4 @@
-name: Hetzner Kafka Deployment
+name: Hetzner Server Creation
 
 on:
   workflow_dispatch:
@@ -10,14 +10,14 @@ on:
       server_type:
         description: 'Hetzner server type'
         required: true
-        default: 'cx21'
+        default: 'cx22'
       image:
         description: 'Server image'
         required: true
         default: 'ubuntu-24.04'
 
 jobs:
-  deploy:
+  create-server:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -30,7 +30,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get install -y sshpass
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           echo "All dependencies installed successfully"
@@ -44,51 +43,39 @@ jobs:
           HCLOUD_IMAGE: ${{ inputs.image }}
         run: |
           echo "Creating server with name: $HCLOUD_SERVER_NAME, type: $HCLOUD_SERVER_TYPE, image: $HCLOUD_IMAGE"
-          # Execute the create_server script and capture its output
-          python scripts/hetzner/create_server.py >> $GITHUB_OUTPUT
+          # Execute the create_server script and capture its output variables
+          python scripts/hetzner/create_server.py | grep -E "^SERVER_IP=|^ROOT_PASS=" >> $GITHUB_OUTPUT
           echo "Server creation completed"
-
-      - name: Install Kafka
-        env:
-          SERVER_IP: ${{ steps.create-server.outputs.SERVER_IP }}
-          ROOT_PASS: ${{ steps.create-server.outputs.ROOT_PASS }}
-        run: |
-          echo "Starting Kafka installation on server $SERVER_IP"
-          ls -la config/kafka/
-          chmod +x scripts/kafka/install_kafka.sh
-          ./scripts/kafka/install_kafka.sh $SERVER_IP "$ROOT_PASS"
-          echo "Kafka installation completed"
-      
-      - name: Verify Kafka Installation
-        env:
-          SERVER_IP: ${{ steps.create-server.outputs.SERVER_IP }}
-          ROOT_PASS: ${{ steps.create-server.outputs.ROOT_PASS }}
-        run: |
-          echo "Verifying Kafka installation on server $SERVER_IP"
-          chmod +x scripts/kafka/verify_kafka.sh
-          ./scripts/kafka/verify_kafka.sh $SERVER_IP "$ROOT_PASS"
-          echo "Kafka verification completed"
       
       - name: Save credentials securely
         env:
+          SERVER_IP: ${{ steps.create-server.outputs.SERVER_IP }}
           ROOT_PASS: ${{ steps.create-server.outputs.ROOT_PASS }}
         run: |
-          echo "$ROOT_PASS" > server_password.txt
+          echo "SERVER_IP=$SERVER_IP" > server_credentials.txt
+          echo "ROOT_PASS=$ROOT_PASS" >> server_credentials.txt
+          echo "Credentials saved successfully"
           
       - name: Upload server credentials
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: server-credentials
-          path: server_password.txt
-          retention-days: 1
+          path: server_credentials.txt
+          retention-days: 7
           
-      - name: Post deployment message
+      - name: Set server details as outputs
+        id: server-details
         run: |
-          echo "Kafka successfully deployed to server ${{ steps.create-server.outputs.SERVER_IP }}"
+          echo "SERVER_IP=${{ steps.create-server.outputs.SERVER_IP }}" >> $GITHUB_OUTPUT
+          echo "SERVER_NAME=${{ inputs.server_name }}" >> $GITHUB_OUTPUT
+          
+      - name: Post creation message
+        run: |
+          echo "Server successfully created"
           echo "Server details:"
           echo "  - IP Address: ${{ steps.create-server.outputs.SERVER_IP }}"
           echo "  - Server Name: ${{ inputs.server_name }}"
           echo "  - Server Type: ${{ inputs.server_type }}"
           echo "You can connect to the server with: ssh root@${{ steps.create-server.outputs.SERVER_IP }}"
-          echo "The server password has been saved as a GitHub artifact named 'server-credentials'"
-          echo "Download it from the Actions tab in your repository"
+          echo "The server credentials have been saved as a GitHub artifact named 'server-credentials'"
+          echo "Use these credentials with the kafka-installation workflow to install Kafka"

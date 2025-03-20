@@ -1,0 +1,48 @@
+name: Manage Instances
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform (list/stop)' 
+        required: true
+        default: 'list'
+        type: choice
+        options:
+        - list
+        - stop
+
+jobs:
+  manage:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: pip install hcloud
+
+    - name: List Servers
+      if: ${{ inputs.action == 'list' }}
+      env:
+        HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      run: |
+        python -c "from hcloud import Client; \
+          client = Client(token='$HCLOUD_TOKEN'); \
+          print('🏗️ Active servers:'); \
+          [print(f'- {server.name} ({server.public_net.ipv4.ip})') for server in client.servers.get_all()]"
+
+    - name: Stop Servers
+      if: ${{ inputs.action == 'stop' }}
+      env:
+        HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      run: |
+        python -c "from hcloud import Client; \
+          client = Client(token='$HCLOUD_TOKEN'); \
+          [server.shutdown().wait_until_finished() for server in client.servers.get_all()]; \
+          print('🛑 Stopped all servers')"
