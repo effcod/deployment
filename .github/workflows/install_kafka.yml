@@ -21,24 +21,47 @@ jobs:
       - name: Setup SSH Key
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           
-          # Check if the key looks like base64 (only contains base64 characters and is 1+ lines)
-          if [[ "${{ inputs.ssh_private_key }}" =~ ^[A-Za-z0-9+/=[:space:]]*$ && ! "${{ inputs.ssh_private_key }}" =~ -----BEGIN ]]; then
-            # It's base64 encoded - decode it
-            echo "Key appears to be base64 encoded, decoding..."
-            echo "${{ inputs.ssh_private_key }}" | base64 -d > ~/.ssh/id_hetzner
-          else
-            # It's raw - use directly
-            echo "Key appears to be raw, using directly..."
-            echo "${{ inputs.ssh_private_key }}" > ~/.ssh/id_hetzner
-          fi
+          # Write the key with proper line breaks
+          # First save to a temporary file to avoid showing key in logs
+          cat > ~/.ssh/id_hetzner << 'EOT'
+          ${{ inputs.ssh_private_key }}
+          EOT
           
+          # Set proper permissions
           chmod 600 ~/.ssh/id_hetzner
+          
+          # Add server to known hosts
           ssh-keyscan -H ${{ inputs.server_ip }} >> ~/.ssh/known_hosts
           
-          # Debug info (without revealing the key)
-          ls -la ~/.ssh/id_hetzner
-          echo "SSH key size: $(wc -c < ~/.ssh/id_hetzner) bytes"
+          # Validate the key - this will show if it's valid without revealing content
+          if ssh-keygen -l -f ~/.ssh/id_hetzner &> /dev/null; then
+            echo "✅ SSH key is valid"
+          else
+            echo "❌ SSH key appears to be invalid or in wrong format"
+            echo "Attempting to fix key format..."
+            
+            # Sometimes keys need proper line breaks - let's ensure they're present
+            sed -i 's/\\n/\n/g' ~/.ssh/id_hetzner
+            
+            # Check again
+            if ssh-keygen -l -f ~/.ssh/id_hetzner &> /dev/null; then
+              echo "✅ SSH key fixed and is now valid"
+            else
+              echo "❌ Still unable to read the SSH key. Please verify the provided key."
+              exit 1
+            fi
+          fi
+          
+          # Test connection
+          echo "Testing SSH connection..."
+          if ssh -o StrictHostKeyChecking=no -o BatchMode=yes -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "echo 'SSH connection successful'"; then
+            echo "✅ SSH connection test successful"
+          else
+            echo "❌ SSH connection test failed"
+            exit 1
+          fi
   
       - name: Install Kafka
         env:
