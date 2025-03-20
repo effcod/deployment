@@ -47,10 +47,57 @@ jobs:
           python scripts/hetzner/create_server.py | grep -E "^SERVER_IP=|^ROOT_PASS=" >> $GITHUB_OUTPUT
           echo "Server creation completed"
       
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass expect
+      
+      - name: Reset Root Password and Disable Expiry
+        id: reset-password
+        env:
+          SERVER_IP: ${{ steps.create-server.outputs.SERVER_IP }}
+          INITIAL_PASSWORD: ${{ steps.create-server.outputs.ROOT_PASS }}
+        run: |
+          # Generate a strong random password
+          NEW_PASSWORD=$(openssl rand -base64 16)
+          echo "Resetting password and disabling expiry for root@$SERVER_IP"
+          
+          # Create expect script to handle password change
+          cat > change_password.exp << 'EOF'
+          #!/usr/bin/expect -f
+          set timeout 60
+          set server_ip [lindex $argv 0]
+          set old_password [lindex $argv 1]
+          set new_password [lindex $argv 2]
+          
+          spawn ssh -o StrictHostKeyChecking=no root@$server_ip
+          expect "password:"
+          send "$old_password\r"
+          expect "password:"
+          send "$new_password\r"
+          expect "password:"
+          send "$new_password\r"
+          expect "#"
+          send "chage -M -1 root\r"
+          expect "#"
+          send "exit\r"
+          expect eof
+          EOF
+          
+          chmod +x change_password.exp
+          ./change_password.exp "$SERVER_IP" "$INITIAL_PASSWORD" "$NEW_PASSWORD"
+          
+          # Test that the new password works and expiry is disabled
+          if sshpass -p "$NEW_PASSWORD" ssh -o StrictHostKeyChecking=no root@$SERVER_IP "echo 'Password reset successful!'"; then
+            echo "Password successfully reset and expiry disabled"
+            echo "NEW_PASSWORD=$NEW_PASSWORD" >> $GITHUB_OUTPUT
+          else
+            echo "Failed to reset password"
+            exit 1
+          fi
+      
       - name: Save credentials securely
         env:
           SERVER_IP: ${{ steps.create-server.outputs.SERVER_IP }}
-          ROOT_PASS: ${{ steps.create-server.outputs.ROOT_PASS }}
+          ROOT_PASS: ${{ steps.reset-password.outputs.NEW_PASSWORD }}
         run: |
           echo "SERVER_IP=$SERVER_IP" > server_credentials.txt
           echo "ROOT_PASS=$ROOT_PASS" >> server_credentials.txt
@@ -61,7 +108,7 @@ jobs:
         with:
           name: server-credentials
           path: server_credentials.txt
-          retention-days: 7
+          retention-days: 3
           
       - name: Set server details as outputs
         id: server-details
@@ -79,3 +126,4 @@ jobs:
           echo "You can connect to the server with: ssh root@${{ steps.create-server.outputs.SERVER_IP }}"
           echo "The server credentials have been saved as a GitHub artifact named 'server-credentials'"
           echo "Use these credentials with the kafka-installation workflow to install Kafka"
+          echo "NOTE: The password has been reset from the initial one provided by Hetzner"
