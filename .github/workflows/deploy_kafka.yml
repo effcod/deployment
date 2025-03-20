@@ -44,8 +44,8 @@ jobs:
           HCLOUD_IMAGE: ${{ inputs.image }}
         run: |
           echo "Creating server with name: $HCLOUD_SERVER_NAME, type: $HCLOUD_SERVER_TYPE, image: $HCLOUD_IMAGE"
-          # Execute the create_server script and capture its output
-          python scripts/hetzner/create_server.py >> $GITHUB_OUTPUT
+          # Execute the create_server script and capture its output variables
+          python scripts/hetzner/create_server.py | grep -E "^SERVER_IP=|^ROOT_PASS=" >> $GITHUB_OUTPUT
           echo "Server creation completed"
 
       - name: Install Kafka
