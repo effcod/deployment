@@ -10,7 +10,7 @@ on:
       server_type:
         description: 'Hetzner server type'
         required: true
-        default: 'cx21'
+        default: 'cx22'
       image:
         description: 'Server image'
         required: true
