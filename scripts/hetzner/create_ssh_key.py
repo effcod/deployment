@@ -41,8 +41,15 @@ def create_ssh_key():
     # Create new SSH key
     try:
         response = client.ssh_keys.create(name=key_name, public_key=public_key)
-        print(f"SSH key created successfully: {response.ssh_key.name}")
-        return response.ssh_key.name
+        # The response structure might vary depending on the library version
+        # Let's handle different possible structures
+        if hasattr(response, 'ssh_key'):
+            print(f"SSH key created successfully: {response.ssh_key.name}")
+            return response.ssh_key.name
+        else:
+            # Direct response object is the SSH key
+            print(f"SSH key created successfully: {response.name}")
+            return response.name
     except Exception as e:
         print(f"Error creating SSH key: {e}")
         exit(1)
