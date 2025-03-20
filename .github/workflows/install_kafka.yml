@@ -6,8 +6,8 @@ on:
       server_ip:
         description: 'Server IP address'
         required: true
-      root_password:
-        description: 'Server root password'
+      ssh_private_key:
+        description: 'SSH private key for server access (base64 encoded)'
         required: true
         type: string
 
@@ -18,31 +18,35 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install sshpass
-        run: sudo apt-get install -y sshpass
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ inputs.ssh_private_key }}" | base64 -d > ~/.ssh/id_hetzner
+          chmod 600 ~/.ssh/id_hetzner
+          ssh-keyscan -H ${{ inputs.server_ip }} >> ~/.ssh/known_hosts
   
       - name: Install Kafka
         env:
           SERVER_IP: ${{ inputs.server_ip }}
-          ROOT_PASS: ${{ inputs.root_password }}
+          SSH_KEY_PATH: ~/.ssh/id_hetzner
         run: |
           echo "Starting Kafka installation on server $SERVER_IP"
           ls -la config/kafka/
           chmod +x scripts/kafka/install_kafka.sh
-          ./scripts/kafka/install_kafka.sh $SERVER_IP "$ROOT_PASS"
+          ./scripts/kafka/install_kafka.sh $SERVER_IP "$SSH_KEY_PATH"
           echo "Kafka installation completed"
       
       - name: Verify Kafka Installation
         env:
           SERVER_IP: ${{ inputs.server_ip }}
-          ROOT_PASS: ${{ inputs.root_password }}
+          SSH_KEY_PATH: ~/.ssh/id_hetzner
         run: |
           echo "Verifying Kafka installation on server $SERVER_IP"
           chmod +x scripts/kafka/verify_kafka.sh
-          ./scripts/kafka/verify_kafka.sh $SERVER_IP "$ROOT_PASS"
+          ./scripts/kafka/verify_kafka.sh $SERVER_IP "$SSH_KEY_PATH"
           echo "Kafka verification completed"
           
       - name: Post installation message
         run: |
           echo "Kafka successfully deployed to server ${{ inputs.server_ip }}"
-          echo "You can connect to the server with: ssh root@${{ inputs.server_ip }}"
+          echo "You can connect to the server with: ssh -i your_private_key root@${{ inputs.server_ip }}"
