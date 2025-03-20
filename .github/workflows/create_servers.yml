@@ -35,6 +35,38 @@ jobs:
           pip install -r requirements.txt
           echo "All dependencies installed successfully"
   
+      - name: Generate SSH key
+        id: ssh-key
+        run: |
+          # Create SSH key name based on server name
+          SSH_KEY_NAME="${{ inputs.server_name }}-key"
+          echo "SSH_KEY_NAME=$SSH_KEY_NAME" >> $GITHUB_OUTPUT
+          
+          # Create a directory for SSH keys
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
+          # Generate a new SSH key pair without passphrase
+          ssh-keygen -t ed25519 -f ~/.ssh/hetzner_key -N "" -C "github-actions-$SSH_KEY_NAME"
+          
+          # Read and encode the keys for outputs
+          echo "PRIVATE_KEY=$(cat ~/.ssh/hetzner_key | base64 -w0)" >> $GITHUB_OUTPUT
+          echo "PUBLIC_KEY=$(cat ~/.ssh/hetzner_key.pub)" >> $GITHUB_OUTPUT
+          
+          # Save keys to disk for the current job
+          echo "SSH key pair generated successfully with name: $SSH_KEY_NAME"
+          
+      - name: Create SSH Key in Hetzner Cloud
+        id: create-ssh-key
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          SSH_KEY_NAME: ${{ steps.ssh-key.outputs.SSH_KEY_NAME }}
+          SSH_PUBLIC_KEY: ${{ steps.ssh-key.outputs.PUBLIC_KEY }}
+        run: |
+          echo "Creating SSH key in Hetzner Cloud with name: $SSH_KEY_NAME"
+          python scripts/hetzner/create_ssh_key.py
+          echo "SSH key created successfully"
+  
       - name: Create Server
         id: create-server
         env:
@@ -42,10 +74,11 @@ jobs:
           HCLOUD_SERVER_NAME: ${{ inputs.server_name }}
           HCLOUD_SERVER_TYPE: ${{ inputs.server_type }}
           HCLOUD_IMAGE: ${{ inputs.image }}
+          HCLOUD_SSH_KEY_NAME: ${{ steps.ssh-key.outputs.SSH_KEY_NAME }}
         run: |
           echo "Creating server with name: $HCLOUD_SERVER_NAME, type: $HCLOUD_SERVER_TYPE, image: $HCLOUD_IMAGE"
           # Execute the create_server script and capture its output variables
-          python scripts/hetzner/create_server.py | grep -E "^SERVER_IP=|^ROOT_PASS=" >> $GITHUB_OUTPUT
+          python scripts/hetzner/create_server.py | grep "^SERVER_IP=" >> $GITHUB_OUTPUT
           echo "Server creation completed"
       
       - name: Wait for SSH service
@@ -64,7 +97,7 @@ jobs:
               echo "SSH_READY=true" >> $GITHUB_OUTPUT
               break
             fi
-            echo "SSH not available yet (attempt $i/10). Waiting 15 seconds..."
+            echo "SSH not available yet (attempt $i/10). Waiting 5 seconds..."
             sleep 5
           done
           
@@ -73,72 +106,46 @@ jobs:
             echo "SSH_READY=false" >> $GITHUB_OUTPUT
           fi
       
-      - name: Reset Root Password
-        id: reset-password
+      - name: Test SSH connection
         if: steps.wait-for-ssh.outputs.SSH_READY == 'true'
         env:
           SERVER_IP: ${{ steps.create-server.outputs.SERVER_IP }}
-          INITIAL_PASSWORD: ${{ steps.create-server.outputs.ROOT_PASS }}
+          PRIVATE_KEY: ${{ steps.ssh-key.outputs.PRIVATE_KEY }}
         run: |
-          # Generate a strong random password
-          NEW_PASSWORD=$(openssl rand -base64 16)
-          echo "Resetting password for root@$SERVER_IP"
+          # Write the private key to a file
+          echo "$PRIVATE_KEY" | base64 -d > ~/.ssh/hetzner_key
+          chmod 600 ~/.ssh/hetzner_key
           
-          # Create expect script to handle password change
-          cat > change_password.exp << 'EOF'
-          #!/usr/bin/expect -f
-          set timeout 60
-          set server_ip [lindex $argv 0]
-          set old_password [lindex $argv 1]
-          set new_password [lindex $argv 2]
+          # Test SSH connection
+          echo "Testing SSH connection to $SERVER_IP..."
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/hetzner_key root@$SERVER_IP "echo 'SSH connection successful!'"
           
-          spawn ssh -o StrictHostKeyChecking=no root@$server_ip
-          expect "password:"
-          send "$old_password\r"
-          expect "password:"
-          send "$new_password\r"
-          expect "password:"
-          send "$new_password\r"
-          expect "#"
-          send "exit\r"
-          expect eof
-          EOF
-          
-          chmod +x change_password.exp
-          ./change_password.exp "$SERVER_IP" "$INITIAL_PASSWORD" "$NEW_PASSWORD"
-          
-          # Test that the new password works
-          if sshpass -p "$NEW_PASSWORD" ssh -o StrictHostKeyChecking=no root@$SERVER_IP "echo 'Password reset successful!'"; then
-            echo "Password successfully reset"
-            echo "NEW_PASSWORD=$NEW_PASSWORD" >> $GITHUB_OUTPUT
-          else
-            echo "Failed to reset password"
-            exit 1
-          fi
-      
-      - name: Use original password if SSH not ready
-        id: use-original-password
-        if: steps.wait-for-ssh.outputs.SSH_READY != 'true'
-        env:
-          INITIAL_PASSWORD: ${{ steps.create-server.outputs.ROOT_PASS }}
-        run: |
-          echo "SSH service not ready, using original password provided by Hetzner"
-          echo "NEW_PASSWORD=$INITIAL_PASSWORD" >> $GITHUB_OUTPUT
-      
       - name: Save credentials securely
         env:
           SERVER_IP: ${{ steps.create-server.outputs.SERVER_IP }}
-          ROOT_PASS: ${{ steps.reset-password.outputs.NEW_PASSWORD || steps.use-original-password.outputs.NEW_PASSWORD }}
+          SSH_PRIVATE_KEY: ${{ steps.ssh-key.outputs.PRIVATE_KEY }}
+          SSH_PUBLIC_KEY: ${{ steps.ssh-key.outputs.PUBLIC_KEY }}
+          SSH_KEY_NAME: ${{ steps.ssh-key.outputs.SSH_KEY_NAME }}
         run: |
+          # Save server details
           echo "SERVER_IP=$SERVER_IP" > server_credentials.txt
-          echo "ROOT_PASS=$ROOT_PASS" >> server_credentials.txt
+          echo "SSH_KEY_NAME=$SSH_KEY_NAME" >> server_credentials.txt
+          
+          # Save SSH keys to separate files
+          echo "$SSH_PRIVATE_KEY" | base64 -d > id_hetzner
+          echo "$SSH_PUBLIC_KEY" > id_hetzner.pub
+          chmod 600 id_hetzner
+          
           echo "Credentials saved successfully"
           
       - name: Upload server credentials
         uses: actions/upload-artifact@v4
         with:
           name: server-credentials
-          path: server_credentials.txt
+          path: |
+            server_credentials.txt
+            id_hetzner
+            id_hetzner.pub
           retention-days: 3
           
       - name: Set server details as outputs
@@ -154,7 +161,7 @@ jobs:
           echo "  - IP Address: ${{ steps.create-server.outputs.SERVER_IP }}"
           echo "  - Server Name: ${{ inputs.server_name }}"
           echo "  - Server Type: ${{ inputs.server_type }}"
-          echo "You can connect to the server with: ssh root@${{ steps.create-server.outputs.SERVER_IP }}"
+          echo "  - SSH Key Name: ${{ steps.ssh-key.outputs.SSH_KEY_NAME }}"
+          echo "You can connect to the server with: ssh -i /path/to/id_hetzner root@${{ steps.create-server.outputs.SERVER_IP }}"
           echo "The server credentials have been saved as a GitHub artifact named 'server-credentials'"
-          echo "Use these credentials with the kafka-installation workflow to install Kafka"
-          echo "NOTE: The password has been reset from the initial one provided by Hetzner"
+          echo "Download the artifact to get the private key file for SSH access"
