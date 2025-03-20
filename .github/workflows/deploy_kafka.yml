@@ -76,7 +76,7 @@ jobs:
           echo "$ROOT_PASS" > server_password.txt
           
       - name: Upload server credentials
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: server-credentials
           path: server_password.txt
