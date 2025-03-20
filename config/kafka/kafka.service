@@ -1,0 +1,20 @@
+[Unit]
+Description=Apache Kafka in KRaft mode
+Documentation=https://kafka.apache.org/documentation
+After=network.target
+
+[Service]
+User=kafka
+Group=kafka
+Environment="KAFKA_CLUSTER_ID=%CLUSTER_ID%"
+Environment="KAFKA_HEAP_OPTS=-Xmx1G -Xms1G"
+Environment="KAFKA_JVM_PERFORMANCE_OPTS=-XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+ExplicitGCInvokesConcurrent"
+WorkingDirectory=/opt/kafka
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh
+Restart=on-failure
+LimitNOFILE=65536
+TimeoutSec=300
+
+[Install]
+WantedBy=multi-user.target
