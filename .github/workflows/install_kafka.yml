@@ -42,10 +42,8 @@ jobs:
           # Write the SSH key based on selected format
           if [[ "${{ inputs.ssh_key_format }}" == "raw" ]]; then
             echo "Using raw SSH key input"
-            # Save key to file, preserving all line breaks and formatting
-            cat > ~/.ssh/id_hetzner << 'EOT'
-            ${{ inputs.ssh_private_key }}
-            EOT
+            # Write key directly to file - simpler and more reliable approach
+            echo "${{ inputs.ssh_private_key }}" > ~/.ssh/id_hetzner
           else
             echo "Using key from artifact path: ${{ inputs.ssh_private_key }}"
             if [[ -f ~/server-credentials/${{ inputs.ssh_private_key }} ]]; then
@@ -69,25 +67,25 @@ jobs:
           stat ~/.ssh/id_hetzner
           echo "Key file size: $(wc -c < ~/.ssh/id_hetzner) bytes"
           echo "Key file line count: $(wc -l < ~/.ssh/id_hetzner) lines"
-          echo "Key file first line chars: $(head -1 ~/.ssh/id_hetzner | wc -c) chars"
           
-          # Check if key is valid
-          if ! ssh-keygen -l -f ~/.ssh/id_hetzner &> /dev/null; then
-            echo "Invalid key format. The key should look like:"
-            echo "-----BEGIN OPENSSH PRIVATE KEY-----"
-            echo "[key content here with proper line breaks]"
-            echo "-----END OPENSSH PRIVATE KEY-----"
+          # Check if key is valid - show detailed error if it fails
+          echo "Validating SSH key..."
+          ssh-keygen -l -f ~/.ssh/id_hetzner || {
+            echo "==== Key validation failed ===="
+            echo "Your key appears to be invalid. Make sure it's a complete private key including the BEGIN and END lines."
+            echo "For OpenSSH format keys, it should start with: -----BEGIN OPENSSH PRIVATE KEY-----"
+            echo "You may need to install the private key file from the server-credentials artifact instead."
             exit 1
-          fi
+          }
           
           # Test connection with more verbose output
           echo "Testing SSH connection..."
-          if ssh -v -o StrictHostKeyChecking=no -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "echo 'SSH connection successful'"; then
-            echo "✅ SSH connection test successful"
-          else
-            echo "❌ SSH connection test failed"
+          ssh -v -o StrictHostKeyChecking=no -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "echo 'SSH connection successful'" || {
+            echo "SSH connection test failed. Please check your SSH key and server configuration."
             exit 1
-          fi
+          }
+          
+          echo "✅ SSH connection test successful"
   
       - name: Install Kafka
         env:
