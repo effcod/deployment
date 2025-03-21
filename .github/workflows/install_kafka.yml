@@ -6,18 +6,6 @@ on:
       server_ip:
         description: 'Server IP address'
         required: true
-      ssh_key_format:
-        description: 'SSH key format'
-        required: true
-        type: choice
-        options:
-          - raw
-          - path
-        default: 'raw'
-      ssh_private_key:
-        description: 'SSH private key (paste full key including BEGIN and END lines) or path to key in artifact'
-        required: true
-        type: string
 
 jobs:
   install-kafka:
@@ -26,86 +14,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Download server credentials artifact
-        if: inputs.ssh_key_format == 'path'
-        uses: actions/download-artifact@v4
+      # Set up SSH access using webfactory/ssh-agent
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          name: server-credentials
-          path: ~/server-credentials
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      
+      - name: Add server to known hosts
+        run: ssh-keyscan -H ${{ inputs.server_ip }} >> ~/.ssh/known_hosts
 
-      - name: Setup SSH Key
-        run: |
-          # Create .ssh directory with proper permissions
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          
-          # Write the SSH key based on selected format
-          if [[ "${{ inputs.ssh_key_format }}" == "raw" ]]; then
-            echo "Using raw SSH key input"
-            # Write key directly to file - simpler and more reliable approach
-            echo "${{ inputs.ssh_private_key }}" > ~/.ssh/id_hetzner
-          else
-            echo "Using key from artifact path: ${{ inputs.ssh_private_key }}"
-            if [[ -f ~/server-credentials/${{ inputs.ssh_private_key }} ]]; then
-              cp ~/server-credentials/${{ inputs.ssh_private_key }} ~/.ssh/id_hetzner
-            else
-              echo "Error: SSH key file not found at specified path"
-              echo "Available files in artifact:"
-              ls -la ~/server-credentials/
-              exit 1
-            fi
-          fi
-          
-          # Set proper permissions
-          chmod 600 ~/.ssh/id_hetzner
-          
-          # Add server to known hosts
-          ssh-keyscan -H ${{ inputs.server_ip }} >> ~/.ssh/known_hosts
-          
-          # Diagnosing the key (without revealing content)
-          echo "Key file stats:"
-          stat ~/.ssh/id_hetzner
-          echo "Key file size: $(wc -c < ~/.ssh/id_hetzner) bytes"
-          echo "Key file line count: $(wc -l < ~/.ssh/id_hetzner) lines"
-          
-          # Check if key is valid - show detailed error if it fails
-          echo "Validating SSH key..."
-          ssh-keygen -l -f ~/.ssh/id_hetzner || {
-            echo "==== Key validation failed ===="
-            echo "Your key appears to be invalid. Make sure it's a complete private key including the BEGIN and END lines."
-            echo "For OpenSSH format keys, it should start with: -----BEGIN OPENSSH PRIVATE KEY-----"
-            echo "You may need to install the private key file from the server-credentials artifact instead."
-            exit 1
-          }
-          
-          # Test connection with more verbose output
-          echo "Testing SSH connection..."
-          ssh -v -o StrictHostKeyChecking=no -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "echo 'SSH connection successful'" || {
-            echo "SSH connection test failed. Please check your SSH key and server configuration."
-            exit 1
-          }
-          
-          echo "✅ SSH connection test successful"
-  
+      - name: Test SSH connection
+        run: ssh -o StrictHostKeyChecking=no root@${{ inputs.server_ip }} "echo 'SSH connection successful'"
+
       - name: Install Kafka
-        env:
-          SERVER_IP: ${{ inputs.server_ip }}
-          SSH_KEY_PATH: ~/.ssh/id_hetzner
         run: |
-          echo "Starting Kafka installation on server $SERVER_IP"
+          echo "Starting Kafka installation on server ${{ inputs.server_ip }}"
           ls -la config/kafka/
           chmod +x scripts/kafka/install_kafka.sh
-          ./scripts/kafka/install_kafka.sh $SERVER_IP "$SSH_KEY_PATH"
+          ./scripts/kafka/install_kafka.sh ${{ inputs.server_ip }}
           echo "Kafka installation completed"
       
       - name: Verify Kafka Installation
-        env:
-          SERVER_IP: ${{ inputs.server_ip }}
-          SSH_KEY_PATH: ~/.ssh/id_hetzner
         run: |
-          echo "Verifying Kafka installation on server $SERVER_IP"
+          echo "Verifying Kafka installation on server ${{ inputs.server_ip }}"
           chmod +x scripts/kafka/verify_kafka.sh
-          ./scripts/kafka/verify_kafka.sh $SERVER_IP "$SSH_KEY_PATH"
+          ./scripts/kafka/verify_kafka.sh ${{ inputs.server_ip }}
           echo "Kafka verification completed"
           
       - name: Post installation message
