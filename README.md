@@ -8,8 +8,9 @@ Automated deployment of Apache Kafka in KRaft mode (without ZooKeeper) on Hetzne
 kafka-deployment/
 ├── .github/
 │   └── workflows/
-│       └── deploy_kafka.yml     # GitHub Actions workflow
-│       └── manage_kafka.yml     # GitHub Actions workflow
+│       └── create_servers.yml
+│       └── install_kafka.yml
+│       └── manage.yml
 ├── config/
 │   └── kafka/
 │       ├── server.properties    # Kafka KRaft configuration
@@ -21,8 +22,6 @@ kafka-deployment/
 │   │   └── utils.py
 │   └── kafka/
 │       ├── install_kafka.sh     # Kafka installation script
-│       └── verify_kafka.sh      # Verification script
-└── README.md                    # This file
 ```
 
 ## Features
