@@ -1,20 +1,22 @@
 [Unit]
-Description=Apache Kafka in KRaft mode
-Documentation=https://kafka.apache.org/documentation
+Description=Kafka Kraft Daemon
+Documentation=https://kafka.apache.org/quickstart
+Requires=network.target
 After=network.target
 
 [Service]
-User=kafka
-Group=kafka
-Environment="KAFKA_CLUSTER_ID=%CLUSTER_ID%"
-Environment="KAFKA_HEAP_OPTS=-Xmx1G -Xms1G"
-Environment="KAFKA_JVM_PERFORMANCE_OPTS=-XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+ExplicitGCInvokesConcurrent"
+Type=forking
 WorkingDirectory=/opt/kafka
-ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft/server.properties
-ExecStop=/opt/kafka/bin/kafka-server-stop.sh
+User=kraft
+Group=kraft
+Environment=KAFKA_HEAP_OPTS="-Xmx2G -Xms2G"
+Environment=KAFKA_JVM_PERFORMANCE_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+ExplicitGCInvokesConcurrent"
+Environment="JAVA_HOME=/usr/lib/jvm/default-java"
+ExecStart=/opt/kafka/bin/kafka-server-start.sh -daemon /opt/kafka/config/kraft/server.properties --override controller.mode=kraft
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh /opt/kafka/config/kraft/server.properties --override controller.mode=kraft
+TimeoutSec=30
 Restart=on-failure
 LimitNOFILE=65536
-TimeoutSec=300
 
 [Install]
 WantedBy=multi-user.target

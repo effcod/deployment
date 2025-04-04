@@ -4,45 +4,34 @@ on:
   workflow_dispatch:
     inputs:
       server_ip:
-        description: 'Server IP address'
+        description: "Server IP address"
         required: true
-      root_password:
-        description: 'Server root password'
-        required: true
-        type: string
 
 jobs:
   install-kafka:
     runs-on: ubuntu-latest
+
     steps:
+      # Step 1: Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install sshpass
-        run: sudo apt-get install -y sshpass
-  
-      - name: Install Kafka
+      # Step 2: Set up SSH key for authentication
+      - name: Configure SSH Key
         env:
-          SERVER_IP: ${{ inputs.server_ip }}
-          ROOT_PASS: ${{ inputs.root_password }}
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
         run: |
-          echo "Starting Kafka installation on server $SERVER_IP"
-          ls -la config/kafka/
-          chmod +x scripts/kafka/install_kafka.sh
-          ./scripts/kafka/install_kafka.sh $SERVER_IP "$ROOT_PASS"
-          echo "Kafka installation completed"
-      
-      - name: Verify Kafka Installation
-        env:
-          SERVER_IP: ${{ inputs.server_ip }}
-          ROOT_PASS: ${{ inputs.root_password }}
+          echo "$HETZNER_SSH_KEY" > ~/.ssh/id_hetzner
+          chmod 600 ~/.ssh/id_hetzner
+
+      # Step 3: Copy files to the server
+      - name: Copy Kafka installation script
         run: |
-          echo "Verifying Kafka installation on server $SERVER_IP"
-          chmod +x scripts/kafka/verify_kafka.sh
-          ./scripts/kafka/verify_kafka.sh $SERVER_IP "$ROOT_PASS"
-          echo "Kafka verification completed"
-          
-      - name: Post installation message
+          scp -i ~/.ssh/id_hetzner scripts/kafka/install_kafka.sh root@${{ inputs.server_ip }}:/tmp/
+          scp -i ~/.ssh/id_hetzner config/kafka/kafka.service root@${{ inputs.server_ip }}:/tmp/
+          scp -i ~/.ssh/id_hetzner config/kafka/server.properties root@${{ inputs.server_ip }}:/tmp/
+
+      # Step 4: Set correct permissions on the server and execute the install script
+      - name: Execute installation script
         run: |
-          echo "Kafka successfully deployed to server ${{ inputs.server_ip }}"
-          echo "You can connect to the server with: ssh root@${{ inputs.server_ip }}"
+          ssh -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "chmod +x /tmp/install_kafka.sh && /tmp/install_kafka.sh"
