@@ -1,90 +1,89 @@
 #!/bin/bash
 
-# Check if IP and SSH key path are provided
-if [ "$#" -ne 2 ]; then
-    echo "Usage: $0 <server_ip> <ssh_key_path>"
-    exit 1
+set -e
+
+# Constants
+KAFKA_VERSION="3.8.0"
+KAFKA_INSTALL_DIR="/opt/kafka_2.13-$KAFKA_VERSION"
+KAFKA_SYMLINK="/opt/kafka"
+KAFKA_USER="kraft"
+
+# Validation: Check if required files exist
+echo "Validating required configuration files..."
+if [[ ! -f /tmp/server.properties ]]; then
+  echo "Error: /tmp/server.properties file is missing!"
+  exit 1
 fi
 
-SERVER_IP=$1
-SSH_KEY_PATH=$2
+if [[ ! -f /tmp/kafka.service ]]; then
+  echo "Error: /tmp/kafka.service file is missing!"
+  exit 1
+fi
+echo "All required files are present."
 
-echo "Installing Kafka in KRaft mode on $SERVER_IP using SSH key authentication"
+# Step 1: Update package list and install dependencies
+echo "Updating package list and installing required packages..."
+sudo apt update && sudo apt install -y default-jre default-jdk wget tar
+echo "Dependencies installed successfully."
 
-# SSH command with key authentication
-SSH_CMD="ssh -i \"$SSH_KEY_PATH\" -o StrictHostKeyChecking=no root@$SERVER_IP"
+# Step 2: Create Kafka user
+echo "Creating '$KAFKA_USER' user (no login)..."
+sudo useradd -m $KAFKA_USER -s /usr/sbin/nologin || echo "User '$KAFKA_USER' already exists."
+echo "User '$KAFKA_USER' created or already exists."
 
-# Copy configuration files to a temporary directory
-echo "Creating temporary directory for configuration files"
-TMP_DIR=$(mktemp -d)
-cp config/kafka/server.properties $TMP_DIR/
-cp config/kafka/kafka.service $TMP_DIR/
+# Step 3: Download and Extract Kafka
+echo "Downloading Kafka $KAFKA_VERSION..."
+cd /opt/
+sudo wget https://dlcdn.apache.org/kafka/$KAFKA_VERSION/kafka_2.13-$KAFKA_VERSION.tgz -O kafka.tgz
+echo "Extracting Kafka..."
+sudo tar xzf kafka.tgz
+sudo rm kafka.tgz
+echo "Kafka extracted to $KAFKA_INSTALL_DIR."
 
-# Replace placeholders with actual values
-echo "Customizing configuration files for server $SERVER_IP"
-sed -i "s/%SERVER_IP%/$SERVER_IP/g" $TMP_DIR/server.properties
+# Step 4: Create Symbolic Link
+if [[ -L $KAFKA_SYMLINK ]]; then
+  echo "Removing old symbolic link..."
+  sudo rm $KAFKA_SYMLINK
+fi
+echo "Creating new symbolic link $KAFKA_SYMLINK -> $KAFKA_INSTALL_DIR..."
+sudo ln -s $KAFKA_INSTALL_DIR $KAFKA_SYMLINK
+echo "Symbolic link created successfully."
 
-# Copy configuration files to the server
-echo "Copying configuration files to server $SERVER_IP"
-scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no $TMP_DIR/server.properties root@$SERVER_IP:/tmp/server.properties
-scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no $TMP_DIR/kafka.service root@$SERVER_IP:/tmp/kafka.service
+cd $KAFKA_SYMLINK
+echo "Backup old server.properties file"
+sudo cp config/kraft/server.properties config/kraft/server.properties.backup
 
-# Clean up temporary files
-rm -rf $TMP_DIR
+# Step 5: Move Provided Configuration Files
+echo "Moving server.properties and kafka.service to their respective directories..."
+sudo mv /tmp/server.properties $KAFKA_SYMLINK/config/kraft/server.properties
+sudo mv /tmp/kafka.service /lib/systemd/system/kafka.service
+echo "Configuration files moved successfully."
 
-# Run installation on server
-$SSH_CMD << EOF
-    # Update system
-    apt-get update -y
-    apt-get upgrade -y
+# Step 6: Kafka Kraft Setup
+echo "Formatting Kafka storage with Cluster ID..."
+export KAFKA_CLUSTER_ID="$(bin/kafka-storage.sh random-uuid)"
+echo "Generated Kafka Cluster ID: $KAFKA_CLUSTER_ID"
+sudo bin/kafka-storage.sh format -t $KAFKA_CLUSTER_ID -c config/kraft/server.properties
+echo "Kafka storage formatted successfully."
 
-    # Install dependencies
-    apt-get install -y openjdk-17-jdk wget tar
+# Step 7: Set permissions for Kafka directory
+echo "Setting permissions for Kafka directory..."
+sudo chown -R $KAFKA_USER:$KAFKA_USER $KAFKA_INSTALL_DIR
+echo "Permissions set successfully."
 
-    # Create dedicated Kafka user
-    useradd -m -s /bin/bash kafka
+# Step 8: Start Kafka Service
+echo "Starting Kafka service..."
+sudo systemctl daemon-reload
+sudo systemctl enable kafka.service
+sudo systemctl start kafka.service
+echo "Kafka service started and enabled."
 
-    # Install Kafka
-    wget https://downloads.apache.org/kafka/3.7.0/kafka_2.13-3.7.0.tgz
-    tar -xzf kafka_2.13-3.7.0.tgz
-    mv kafka_2.13-3.7.0 /opt/kafka
-    rm kafka_2.13-3.7.0.tgz
-    
-    # Create data directories for Kafka
-    mkdir -p /opt/kafka/data
-    chown -R kafka:kafka /opt/kafka
-    
-    # Copy server configuration
-    cp /tmp/server.properties /opt/kafka/config/kraft/server.properties
-    
-    # Generate Cluster UUID and format storage
-    CLUSTER_ID=\$(cd /opt/kafka && bin/kafka-storage.sh random-uuid)
-    echo "Generated Kafka Cluster ID: \$CLUSTER_ID"
-    
-    # Format storage with generated cluster ID
-    cd /opt/kafka && bin/kafka-storage.sh format -t \$CLUSTER_ID -c config/kraft/server.properties
-    
-    # Update service file with cluster ID
-    sed "s/%CLUSTER_ID%/\$CLUSTER_ID/g" /tmp/kafka.service > /etc/systemd/system/kafka.service
-    
-    # Enable and start Kafka
-    systemctl daemon-reload
-    systemctl enable kafka
-    systemctl start kafka
-    sleep 10
-    systemctl status kafka
+# Step 9: Verify Kafka Service Status
+echo "Verifying Kafka service status..."
+sudo systemctl status kafka.service --no-pager || echo "Warning: Kafka service may not be running."
+echo "Kafka Kraft installation and configuration completed successfully!"
 
-    # Open ports
-    ufw allow 9092/tcp
-    ufw allow 19092/tcp
-    ufw allow 9093/tcp
-    
-    echo "Waiting for Kafka to fully start..."
-    sleep 20
-    
-    # Test Kafka installation by creating a test topic
-    /opt/kafka/bin/kafka-topics.sh --create --topic test-topic --partitions 1 --replication-factor 1 --bootstrap-server localhost:9092
-    echo "Kafka test topic created successfully"
-EOF
+echo "Testing Kafka logs..."
+sudo tail -n 50 $KAFKA_SYMLINK/logs/server.log || echo "Warning: Unable to display logs."
 
-echo "Kafka KRaft installation completed on $SERVER_IP"
+echo "Kafka Kraft node is now running on localhost:9092 with a symbolic link at $KAFKA_SYMLINK."
