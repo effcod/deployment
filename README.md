@@ -21,7 +21,7 @@ kafka-deployment/
 │   │   └── delete_server.py
 │   │   └── utils.py
 │   └── kafka/
-│       ├── install_kafka.sh     # Kafka installation script
+│       └── install_kafka.sh     # Kafka installation script
 ```
 
 ## Features
