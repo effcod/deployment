@@ -1,0 +1,29 @@
+name: Manage Instances
+
+on:
+  workflow_dispatch:
+    inputs:
+      allowed_ips:
+        description: "List of allowed IPs (comma-separated)"
+        required: true
+
+jobs:
+  manage:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: pip install hcloud
+
+    - name: Set Firewalls
+      env:
+        HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      run: |
+        python scripts/hetzner/set_firewall.py $HCLOUD_TOKEN '${{ inputs.allowed_ips }}'
