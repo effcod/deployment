@@ -23,6 +23,7 @@ jobs:
         run: |
           echo "$HETZNER_SSH_KEY" > ~/id_hetzner
           chmod 600 ~/id_hetzner
+          ssh-keyscan -H ${{ inputs.server_ip }} >> ~/.ssh/known_hosts
 
       # Step 3: Copy files to the server
       - name: Copy Kafka installation script
