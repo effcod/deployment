@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'Action to perform (list/stop)' 
+        description: 'Action to perform (list/stop/kill)' 
         required: true
         default: 'list'
         type: choice
         options:
         - list
         - stop
+        - kill
 
 jobs:
   manage:
@@ -46,3 +47,13 @@ jobs:
           client = Client(token='$HCLOUD_TOKEN'); \
           [server.shutdown().wait_until_finished() for server in client.servers.get_all()]; \
           print('🛑 Stopped all servers')"
+
+    - name: Kill Servers
+      if: ${{ inputs.action == 'kill' }}
+      env:
+        HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      run: |
+        python -c "from hcloud import Client; \
+          client = Client(token='$HCLOUD_TOKEN'); \
+          [server.delete().wait_until_finished() for server in client.servers.get_all()]; \
+          print('💀 Killed all servers')"
