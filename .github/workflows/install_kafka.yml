@@ -21,17 +21,24 @@ jobs:
         env:
           HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
         run: |
-          echo "$HETZNER_SSH_KEY" > ~/.ssh/id_hetzner
-          chmod 600 ~/.ssh/id_hetzner
+          echo "$HETZNER_SSH_KEY" > ~/id_hetzner
+          chmod 600 ~/id_hetzner
 
       # Step 3: Copy files to the server
       - name: Copy Kafka installation script
         run: |
-          scp -i ~/.ssh/id_hetzner scripts/kafka/install_kafka.sh root@${{ inputs.server_ip }}:/tmp/
-          scp -i ~/.ssh/id_hetzner config/kafka/kafka.service root@${{ inputs.server_ip }}:/tmp/
-          scp -i ~/.ssh/id_hetzner config/kafka/server.properties root@${{ inputs.server_ip }}:/tmp/
+          scp -i ~/id_hetzner scripts/kafka/install_kafka.sh root@${{ inputs.server_ip }}:/tmp/
+          scp -i ~/id_hetzner config/kafka/kafka.service root@${{ inputs.server_ip }}:/tmp/
+          scp -i ~/id_hetzner config/kafka/server.properties root@${{ inputs.server_ip }}:/tmp/
 
       # Step 4: Set correct permissions on the server and execute the install script
       - name: Execute installation script
         run: |
-          ssh -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "chmod +x /tmp/install_kafka.sh && /tmp/install_kafka.sh"
+          ssh -i ~/id_hetzner root@${{ inputs.server_ip }} "chmod +x /tmp/install_kafka.sh && /tmp/install_kafka.sh"
+
+      # Step 5: Cleanup
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f ~/id_hetzner
+          ls -l
