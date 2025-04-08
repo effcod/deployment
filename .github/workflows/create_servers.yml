@@ -130,12 +130,8 @@ jobs:
           # Save server details
           echo "SERVER_IP=$SERVER_IP" > server_credentials.txt
           echo "SSH_KEY_NAME=$SSH_KEY_NAME" >> server_credentials.txt
-          
-          # Save SSH keys to separate files
           echo "$SSH_PRIVATE_KEY" | base64 -d > id_hetzner
-          echo "$SSH_PUBLIC_KEY" > id_hetzner.pub
           chmod 600 id_hetzner
-          
           echo "Credentials saved successfully"
           
       - name: Upload server credentials
@@ -145,23 +141,13 @@ jobs:
           path: |
             server_credentials.txt
             id_hetzner
-            id_hetzner.pub
-          retention-days: 3
-          
-      - name: Set server details as outputs
-        id: server-details
+          retention-days: 1
+
+      - name: Cleanup sensitive data
+        if: always()
         run: |
-          echo "SERVER_IP=${{ steps.create-server.outputs.SERVER_IP }}" >> $GITHUB_OUTPUT
-          echo "SERVER_NAME=${{ inputs.server_name }}" >> $GITHUB_OUTPUT
-          
-      - name: Post creation message
-        run: |
+          rm -rf ~/.ssh id_hetzner server_credentials.txt
           echo "Server successfully created"
-          echo "Server details:"
-          echo "  - IP Address: ${{ steps.create-server.outputs.SERVER_IP }}"
-          echo "  - Server Name: ${{ inputs.server_name }}"
-          echo "  - Server Type: ${{ inputs.server_type }}"
-          echo "  - SSH Key Name: ${{ steps.ssh-key.outputs.SSH_KEY_NAME }}"
-          echo "You can connect to the server with: ssh -i /path/to/id_hetzner root@${{ steps.create-server.outputs.SERVER_IP }}"
-          echo "The server credentials have been saved as a GitHub artifact named 'server-credentials'"
-          echo "Download the artifact to get the private key file for SSH access"
+          ls -la
+          
+
