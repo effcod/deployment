@@ -4,6 +4,7 @@ import os
 import time
 from utils import get_hcloud_client
 
+as
 def get_server_config():
     """Read server configuration from environment variables with defaults"""
     token = os.environ.get("HCLOUD_TOKEN")
