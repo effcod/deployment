@@ -1,0 +1,51 @@
+#!/bin/bash
+# install_artifact.sh
+# This script accepts one argument: the version of the artifact to deploy.
+
+if [ "$#" -ne 1 ]; then
+  echo "Usage: $0 <version>"
+  exit 1
+fi
+
+VERSION=$1
+APP_DIR="/opt/python-app-${VERSION}"
+ARTIFACT="/tmp/python-app-${VERSION}.tar.gz"
+
+echo "Deploying version $VERSION..."
+
+# Remove the directory if it exists, then create it.
+if [ -d "$APP_DIR" ]; then
+    echo "Deleting existing directory $APP_DIR..."
+    rm -rf "$APP_DIR"
+fi
+echo "Creating directory $APP_DIR..."
+mkdir -p "$APP_DIR"
+
+# Update the package list and install Python 3 and pip if necessary.
+echo "Installing Python3 and pip3..."
+apt-get update && apt-get install -y python3 python3-pip
+
+# Unpack the artifact to the application directory.
+echo "Unpacking artifact $ARTIFACT to $APP_DIR..."
+tar -xzvf "$ARTIFACT" -C "$APP_DIR"
+
+# Install dependencies from requirements.txt (make sure it exists in your package).
+if [ -f "$APP_DIR/requirements.txt" ]; then
+  echo "Installing Python dependencies..."
+  pip3 install -r "$APP_DIR/requirements.txt"
+else
+  echo "Warning: requirements.txt not found in $APP_DIR. Skipping pip install."
+fi
+
+# Run the main python script.
+if [ -f "$APP_DIR/main.py" ]; then
+  echo "Launching Python application..."
+  # Running in the background, outputting logs to a file.
+  nohup python3 "$APP_DIR/main.py" > "$APP_DIR/app.log" 2>&1 &
+  echo "Application running in background. Check logs in $APP_DIR/app.log"
+else
+  echo "Error: main.py not found in $APP_DIR. Deployment aborted."
+  exit 1
+fi
+
+echo "Deployment completed!"
