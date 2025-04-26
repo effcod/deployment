@@ -1,0 +1,52 @@
+name: Deploy Python Application
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Artifact version (e.g., 1.0.0)'
+        required: true
+      server_ip:
+        description: 'IP address of the target server'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Checkout the deployment repository so that install_artifact.sh is available.
+      - name: Checkout deployment repo
+        uses: actions/checkout@v4
+
+      # Step 2: Download the artifact from the python project.
+      # (Assumes the artifact was uploaded and is available with the name
+      # "python-app-<version>" from a previous run or via a shared artifact mechanism.)
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: python-app-${{ github.event.inputs.version }}
+          path: artifact
+
+      # Step 3: Configure SSH key for authentication to the remote server.
+      - name: Configure SSH Key
+        env:
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$HETZNER_SSH_KEY" > ~/.ssh/id_hetzner
+          chmod 600 ~/.ssh/id_hetzner
+          # Add the server key to known_hosts to avoid interactive prompt.
+          ssh-keyscan -H "${{ github.event.inputs.server_ip }}" >> ~/.ssh/known_hosts
+
+      # Step 4: Copy artifact to the remote server’s /tmp/ folder.
+      - name: Copy Artifact and install script
+        run: |
+          scp -i ~/.ssh/id_hetzner artifact/python-app-${{ inputs.version }}.tar.gz root@${{ github.inputs.server_ip }}:/tmp/
+          scp -i ~/.ssh/id_hetzner scripts/kafka/install_kafka.sh root@${{ inputs.server_ip }}:/tmp/
+
+      # Step 5: Execute the installation script on the remote server.
+      - name: Execute Deployment Script
+        run: |
+          ssh -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "chmod +x /tmp/install_artifact.sh && /tmp/install_artifact.sh ${{ github.event.inputs.version }}"
+          
