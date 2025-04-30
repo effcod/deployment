@@ -27,19 +27,25 @@ jobs:
           chmod 600 ~/.ssh/id_hetzner
           ssh-keyscan -H ${{ inputs.server_ip }} >> ~/.ssh/known_hosts
 
-      # Step 3: Copy files to the server
-      - name: Copy Kafka installation script
+      # Step 3: Replace advertised.listeners in the Kafka server properties file
+      - name: Append advertised.listeners with external IP
+        run: |
+          echo "advertised.listeners=PLAINTEXT://${{ inputs.server_ip }}:9092" >> config/kafka/server.properties
+          cat config/kafka/server.properties  # Optional, for debugging/verification
+
+      # Step 4: Copy files to the server
+      - name: Copy Kafka installation script and configuration files
         run: |
           scp -i ~/.ssh/id_hetzner scripts/kafka/install_kafka.sh root@${{ inputs.server_ip }}:/tmp/
           scp -i ~/.ssh/id_hetzner config/kafka/kafka.service root@${{ inputs.server_ip }}:/tmp/
           scp -i ~/.ssh/id_hetzner config/kafka/server.properties root@${{ inputs.server_ip }}:/tmp/
 
-      # Step 4: Set correct permissions on the server and execute the install script
+      # Step 5: Set correct permissions on the server and execute the install script
       - name: Execute installation script
         run: |
           ssh -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "chmod +x /tmp/install_kafka.sh && /tmp/install_kafka.sh"
 
-      # Step 5: Cleanup
+      # Step 6: Cleanup SSH configuration
       - name: Cleanup
         if: always()
         run: |
