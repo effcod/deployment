@@ -23,8 +23,7 @@ mkdir -p "$APP_DIR"
 
 # Update the package list and install Python 3 and pip if necessary.
 echo "Installing Python3 and pip3..."
-apt-get update
-apt-get install python3.12-venv
+apt-get install -y python3.12-venv
 apt-get install -y python3 python3-pip
 
 
