@@ -50,3 +50,9 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "chmod +x /tmp/install_artifact.sh && /tmp/install_artifact.sh ${{ github.event.inputs.version }}"
           
+      # Step 6: Cleanup SSH configuration
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf ~/.ssh
+          ls -l
