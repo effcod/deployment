@@ -7,13 +7,12 @@
 # Usage: ./install_artifact.sh <version> <command>
 # Example: ./install_artifact.sh 0.0.3 quote_api_to_file
 
-if [ "$#" -ne 2 ]; then
+if [ "$#" -ne 1 ]; then
   echo "Usage: $0 <version> <command>"
   exit 1
 fi
 
 VERSION=$1
-COMMAND=$2
 ARTIFACT="trading-${VERSION}"
 SOURCE_ARTIFACT="/tmp/$ARTIFACT"
 
@@ -34,14 +33,19 @@ echo "Moving artifact to $TARGET_ARTIFACT..."
 mkdir -p "$TARGET_BASE_PATH"
 mv "$SOURCE_ARTIFACT" "$TARGET_ARTIFACT"
 cd "$TARGET_BASE_PATH"
-
-# Optionally, kill any existing running instance of the old version.
-# For example: pkill -f "$TARGET_ARTIFACT" || true
-
-# Ensure the artifact has executable permissions.
 chmod +x "$TARGET_ARTIFACT"
 
-# Launch the standalone executable in the background, passing the command argument.
-nohup "$TARGET_ARTIFACT" --command "$COMMAND" > "/opt/trading-${VERSION}.log" 2>&1 &
+SYMBOL_SOURCE_PATH="/tmp/symbols.txt"
+SYMBOL_TARGET_PATH="/opt/symbols"
+mkdir -p "$SYMBOL_TARGET_PATH"
+SYMBOL_TARGET_FILE="/opt/symbols/symbols-${VERSION}.txt"
+mv "$SYMBOL_SOURCE_PATH" "$SYMBOL_TARGET_FILE"
 
-echo "Deployment completed. Application is running; check /opt/trading-${VERSION}.log for logs."
+SYMLINK="$SYMBOL_TARGET_PATH/symbols.txt"
+# Remove the existing symbolic link if it exists
+if [ -L "$SYMLINK" ]; then
+    rm "$SYMLINK"
+fi
+
+# Create a new symbolic link to the latest version
+ln -s "$SYMBOL_TARGET_FILE" "$SYMLINK"
