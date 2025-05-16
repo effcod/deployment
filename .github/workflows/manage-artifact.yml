@@ -1,0 +1,49 @@
+name: Managed Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Artifact version (e.g., 0.0.3) to be deployed'
+        required: true
+      server_ip:
+        description: 'IP address of the target server'
+        required: true
+      python_app_ip:
+        description: 'IP address where the Python application should be started'
+        required: true
+      command:
+        description: 'command line args which should be executed'
+        required: true
+        default: '--command quote_api_to_kafka --kafka_topic quotes'
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Deployment Repo
+        uses: actions/checkout@v4
+
+      - name: Configure SSH Key
+        env:
+          SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_hetzner
+          chmod 600 ~/.ssh/id_hetzner
+          ssh-keyscan -H "${{ github.event.inputs.server_ip }}" >> ~/.ssh/known_hosts
+
+      - name: Execute Deployment Script on Remote Host with Command
+        run: |
+          scp -i ~/.ssh/id_hetzner scripts/python/run_artifact.sh root@${{ github.event.inputs.server_ip }}:/tmp/
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<EOF
+          chmod +x /tmp/run_artifact.sh
+          /tmp/run_artifact.sh ${{ github.event.inputs.version }} ${{ github.event.inputs.command }}
+          EOF
+
+      - name: Cleanup SSH Configuration
+        if: always()
+        run: |
+          rm -rf ~/.ssh
