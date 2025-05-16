@@ -15,10 +15,10 @@ jobs:
       - name: Checkout Trading Repository at Provided Tag
         uses: actions/checkout@v4
         with:
-          # Replace 'trading-cz/trading' with your organization/repository name if different.
           repository: trading-cz/trading
           ref: ${{ github.event.inputs.artifact_tag }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Use a PAT with permissions to access the trading repository.
+          token: ${{ secrets.TRADING_PAT }}
           path: trading
 
       - name: Setup Python
@@ -29,7 +29,7 @@ jobs:
       - name: Parse Tag and Prepare Build
         working-directory: trading
         run: |
-          # The provided tag (which is used as the version) is stored in the input.
+          # The provided tag is used as the version.
           VERSION="${{ github.event.inputs.artifact_tag }}"
           echo "Using artifact version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
@@ -43,10 +43,8 @@ jobs:
           # Install dependencies from requirements.txt into the build folder.
           pip install --upgrade --no-cache-dir -r requirements.txt --target build
 
-          # Copy the __main__.py entry point.
+          # Copy the entry point (__main__.py) and the inner source folder.
           cp __main__.py build/
-
-          # Copy the inner source folder.
           cp -r trading/ build/trading
 
           # Copy the data folder if it exists.
@@ -54,17 +52,15 @@ jobs:
             cp -r data build/data
           fi
 
-          # Build the zipapp. With __main__.py included, the zipapp
-          # will use it as the entry point.
+          # Build the zipapp. The bundled __main__.py acts as the entry point.
           python -m zipapp build -o trading-${VERSION}.pyz
 
-          # List the produced file for review.
+          # List the produced file for verification.
           ls -l
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          # Artifact name is now "trading-<version>" (no forbidden characters)
+          # Artifact is named without invalid characters.
           name: "trading-${{ env.VERSION }}"
-          # The artifact file is located under the trading folder.
           path: "trading/trading-${{ env.VERSION }}.pyz"
