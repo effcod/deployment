@@ -29,11 +29,11 @@ jobs:
       - name: Checkout Deployment Repo
         uses: actions/checkout@v4
 
-      - name: Download Artifact
+      - name: Download All Artifacts
         uses: actions/download-artifact@v4
-        with:
-          name: trading-${{ github.event.inputs.version }}
-          path: artifact
+
+      - name: List files
+        run: ls -l
 
       - name: Configure SSH Key
         env:
