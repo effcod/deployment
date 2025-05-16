@@ -9,18 +9,6 @@ on:
       server_ip:
         description: 'IP address of the target server'
         required: true
-      command:
-        description: >-
-          Command to run. Allowed values:
-          quote_api_to_kafka, quote_api_to_file, quote_file_to_kafka,
-          trade_api_to_kafka, trade_file_to_kafka.
-        required: true
-        default: quote_api_to_kafka
-      kafka_topic:
-        description: 'Kafka topic to use (default: quotes)'
-        required: false
-        default: quotes
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -94,27 +82,23 @@ jobs:
           cat <<EOF > .env
           API_KEY=${{ secrets.API_KEY }}
           API_SECRET=${{ secrets.API_SECRET }}
-          KAFKA_TOPIC=${{ github.event.inputs.kafka_topic }}
           KAFKA_BOOTSTRAP_SERVER=localhost:9092
-          INPUT_FILE_NAME=in.json
-          OUTPUT_FILE_NAME=out.json
-          SYMBOL_FILE_NAME=/tmp/symbols.txt
           EOF
 
       - name: Copy Files to Remote Server
         run: |
           scp -i ~/.ssh/id_hetzner artifact/trading-${{ github.event.inputs.version }} root@${{ github.event.inputs.server_ip }}:/tmp/
           scp -i ~/.ssh/id_hetzner scripts/python/install_artifact.sh root@${{ github.event.inputs.server_ip }}:/tmp/
-          scp -i ~/.ssh/id_hetzner artifact/symbols.txt root@${{ github.event.inputs.server_ip }}:/tmp/symbols.txt
+          scp -i ~/.ssh/id_hetzner artifact/symbols.txt root@${{ github.event.inputs.server_ip }}:/tmp/symbol-${{ github.event.inputs.version }}.txt
           scp -i ~/.ssh/id_hetzner .env root@${{ github.event.inputs.server_ip }}:/tmp/
-          rm -f .env
+
 
       - name: Execute Deployment Script on Remote Host
         run: |
           ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<EOF
           source /tmp/.env
           chmod +x /tmp/install_artifact.sh
-          /tmp/install_artifact.sh ${{ github.event.inputs.version }} ${{ github.event.inputs.command }}
+          /tmp/install_artifact.sh ${{ github.event.inputs.version }}
           EOF
 
       - name: Cleanup SSH Configuration
@@ -122,3 +106,4 @@ jobs:
         run: |
           rm -rf ~/.ssh
           rm -f /tmp/.env
+          rm -f .env
