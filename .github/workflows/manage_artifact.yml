@@ -61,8 +61,8 @@ jobs:
           echo "Listing all PID files in /opt folder:"
           for file in /opt/*.pid; do
             if [ -e "$file" ]; then
-              echo "File: $file"
-              cat "$file"
+              PID=`cat "$file"`
+              echo "File: $file: PID:$PID"
             fi
           done
           EOF
@@ -77,14 +77,14 @@ jobs:
 
           PID_TO_KILL="${{ github.event.inputs.pid }}"
           ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<EOF
-          PID_FOUND=\$(grep -l "$PID_TO_KILL" /opt/*.pid 2>/dev/null)
-          if [ -n "\$PID_FOUND" ]; then
-            echo "PID $PID_TO_KILL found in file(s): \$PID_FOUND. Attempting to kill process..."
+          PID_FILE="/opt/${PID_TO_KILL}.pid"
+          if [ -f "\$PID_FILE" ]; then
+            echo "Found PID file \$PID_FILE. Attempting to kill process \$PID_TO_KILL..."
             kill -9 "$PID_TO_KILL"
-            echo "Process $PID_TO_KILL killed."
-            rm -f \$PID_FOUND && echo "Deleted PID file(s): \$PID_FOUND"
+            echo "Process \$PID_TO_KILL killed."
+            rm -f "\$PID_FILE" && echo "Deleted PID file: \$PID_FILE"
           else
-            echo "PID $PID_TO_KILL not found in any PID files under /opt."
+            echo "PID file \$PID_FILE not found."
             exit 1
           fi
           EOF
