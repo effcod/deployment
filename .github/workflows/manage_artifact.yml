@@ -9,9 +9,6 @@ on:
       server_ip:
         description: 'IP address of the target server'
         required: true
-      python_app_ip:
-        description: 'IP address where the Python application should be started'
-        required: true
       command:
         description: 'command line args which should be executed'
         required: true
