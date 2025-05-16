@@ -89,7 +89,7 @@ jobs:
         run: |
           scp -i ~/.ssh/id_hetzner artifact/trading-${{ github.event.inputs.version }} root@${{ github.event.inputs.server_ip }}:/tmp/
           scp -i ~/.ssh/id_hetzner scripts/python/install_artifact.sh root@${{ github.event.inputs.server_ip }}:/tmp/
-          scp -i ~/.ssh/id_hetzner artifact/symbols.txt root@${{ github.event.inputs.server_ip }}:/tmp/symbol-${{ github.event.inputs.version }}.txt
+          scp -i ~/.ssh/id_hetzner artifact/symbols.txt root@${{ github.event.inputs.server_ip }}:/tmp/symbols-${{ github.event.inputs.version }}.txt
           scp -i ~/.ssh/id_hetzner .env root@${{ github.event.inputs.server_ip }}:/tmp/
 
 
