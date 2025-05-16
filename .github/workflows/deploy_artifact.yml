@@ -9,6 +9,10 @@ on:
       server_ip:
         description: 'IP address of the target server'
         required: true
+      command:
+        description: 'Command to run. Allowed values: quote_api_to_kafka, quote_api_to_file, quote_file_to_kafka, trade_api_to_kafka, trade_file_to_kafka.'
+        required: true
+        default: quote_api_to_kafka
 
 jobs:
   deploy:
@@ -20,7 +24,7 @@ jobs:
       - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
-          # Artifact name was uploaded as "trading-<version>"
+          # Artifact name was uploaded as "trading-<version>" without an extension.
           name: trading-${{ github.event.inputs.version }}
           path: artifact
 
@@ -37,12 +41,12 @@ jobs:
 
       - name: Copy Artifact and Install Script to Remote
         run: |
-          scp -i ~/.ssh/id_hetzner artifact/trading-${{ github.event.inputs.version }}.pyz root@${{ github.event.inputs.server_ip }}:/tmp/
+          scp -i ~/.ssh/id_hetzner artifact/trading-${{ github.event.inputs.version }} root@${{ github.event.inputs.server_ip }}:/tmp/
           scp -i ~/.ssh/id_hetzner scripts/python/install_artifact.sh root@${{ github.event.inputs.server_ip }}:/tmp/
 
       - name: Execute Deployment Script on Remote Host
         run: |
-          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "chmod +x /tmp/install_artifact.sh && /tmp/install_artifact.sh ${{ github.event.inputs.version }}"
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "chmod +x /tmp/install_artifact.sh && /tmp/install_artifact.sh ${{ github.event.inputs.version }} ${{ github.event.inputs.command }}"
 
       - name: Cleanup SSH Configuration
         if: always()
