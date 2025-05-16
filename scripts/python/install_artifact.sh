@@ -1,5 +1,5 @@
 #!/bin/bash
-# install_artifact.sh
+# install_artifact.sh for deploying a zipapp.
 # This script accepts one argument: the version of the artifact to deploy.
 
 if [ "$#" -ne 1 ]; then
@@ -8,51 +8,29 @@ if [ "$#" -ne 1 ]; then
 fi
 
 VERSION=$1
-APP_DIR="/opt/python-app-${VERSION}"
-ARTIFACT="/tmp/python-app-${VERSION}.tar.gz"
+ARTIFACT="trading-${VERSION}.pyz"
+SOURCE_ARTIFACT="/tmp/$ARTIFACT"
 
-echo "Deploying version $VERSION..."
+TARGET_BASE_PATH="/opt/python-app"
+TARGET_ARTIFACT="$TARGET_BASE_PATH/$ARTIFACT"
 
-# Remove the directory if it exists, then create it.
-if [ -d "$APP_DIR" ]; then
-    echo "Deleting existing directory $APP_DIR..."
-    rm -rf "$APP_DIR"
-fi
-echo "Creating directory $APP_DIR..."
-mkdir -p "$APP_DIR"
+echo "Deploying zipapp version $VERSION..."
+echo "  From: $SOURCE_ARTIFACT"
+echo "  To: $TARGET_ARTIFACT"
 
-# Update the package list and install Python 3 and pip if necessary.
-echo "Installing Python3 and pip3..."
-apt-get install -y python3.12-venv
-apt-get install -y python3 python3-pip
-
-
-# Unpack the artifact to the application directory.
-echo "Unpacking artifact $ARTIFACT to $APP_DIR..."
-tar -xzvf "$ARTIFACT" -C "$APP_DIR"
-
-cd $APP_DIR
-python3 -m venv $APP_DIR/venv
-source venv/bin/activate
-
-
-# Install dependencies from requirements.txt (make sure it exists in your package).
-if [ -f "$APP_DIR/requirements.txt" ]; then
-  echo "Installing Python dependencies..."
-  pip3 install -r "$APP_DIR/requirements.txt"
-else
-  echo "Warning: requirements.txt not found in $APP_DIR. Skipping pip install."
+# Remove any existing artifact from /opt
+if [ -f "$TARGET_ARTIFACT" ]; then
+  echo "Removing existing artifact $TARGET_ARTIFACT..."
+  rm -f "$TARGET_ARTIFACT"
 fi
 
-# Run the main python script.
-if [ -f "$APP_DIR/main.py" ]; then
-  echo "Launching Python application..."
-  # Running in the background, outputting logs to a file.
-  nohup python3 "$APP_DIR/main.py" > "$APP_DIR/app.log" 2>&1 &
-  echo "Application running in background. Check logs in $APP_DIR/app.log"
-else
-  echo "Error: main.py not found in $APP_DIR. Deployment aborted."
-  exit 1
-fi
+echo "Moving artifact to $TARGET_BASE_PATH..."
+mv "$SOURCE_ARTIFACT" "$TARGET_BASE_PATH"
 
-echo "Deployment completed!"
+# Optionally, kill any existing running instance of the old version.
+# For example: pkill -f "python3 $APP_PATH" || true
+
+# Launch the zipapp in the background. This will execute the bundled __main__.py.
+nohup python3 "$TARGET_ARTIFACT" > "/opt/trading-${VERSION}.log" 2>&1 &
+
+echo "Deployment completed. Application is running; check /opt/trading-${VERSION}.log for logs."
