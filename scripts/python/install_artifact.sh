@@ -24,9 +24,10 @@ if [ -f "$TARGET_ARTIFACT" ]; then
   rm -f "$TARGET_ARTIFACT"
 fi
 
-echo "Moving artifact to $TARGET_BASE_PATH..."
-mv "$SOURCE_ARTIFACT" "$TARGET_BASE_PATH"
-
+echo "Moving artifact to $TARGET_ARTIFACT..."
+mkdir -p "$TARGET_BASE_PATH"
+mv "$SOURCE_ARTIFACT" "$TARGET_ARTIFACT"
+cd "$TARGET_BASE_PATH"
 # Optionally, kill any existing running instance of the old version.
 # For example: pkill -f "python3 $APP_PATH" || true
 
