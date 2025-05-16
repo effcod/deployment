@@ -35,6 +35,8 @@ mv "$SOURCE_ARTIFACT" "$TARGET_ARTIFACT"
 cd "$TARGET_BASE_PATH"
 chmod +x "$TARGET_ARTIFACT"
 
+ls -l /tmp
+
 SYMBOL_SOURCE_PATH="/tmp/symbols.txt"
 SYMBOL_TARGET_PATH="/opt/symbols"
 mkdir -p "$SYMBOL_TARGET_PATH"
