@@ -39,7 +39,7 @@ echo "Starting artifact '${ARTIFACT}' with command '$COMMAND'..."
 echo "Logs will be written to '$LOGFILE'."
 
 # Run the artifact in the background using nohup so it survives the SSH session.
-nohup "$ARTIFACT" "$COMMAND" > "$LOGFILE" 2>&1 &
+nohup "$ARTIFACT" $COMMAND > "$LOGFILE" 2>&1 &
 
 # Capture the process ID (PID) of the background process.
 PID=$!
