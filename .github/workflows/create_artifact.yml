@@ -61,6 +61,5 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          # Artifact is named without invalid characters.
-          name: "trading-${{ env.VERSION }}.pyz"
+          name: "trading-${{ env.VERSION }}"
           path: "trading/trading-${{ env.VERSION }}.pyz"
