@@ -44,9 +44,11 @@ jobs:
           pip install pyinstaller
 
           # Build the standalone executable using PyInstaller.
-          # The --onefile option ensures a single-file bundle.
+          # The --onefile option creates a single-file executable.
           # The --name option names the executable with the version.
-          pyinstaller --onefile --name trading-${VERSION} __main__.py
+          # The --add-data option bundles the symbols file (from data/symbols.txt)
+          # into the root (.) of the bundled artifact.
+          pyinstaller --onefile --name trading-${VERSION} --add-data "data/symbols.txt:." __main__.py
 
           # List the produced executable in the dist folder for verification.
           ls -l dist
