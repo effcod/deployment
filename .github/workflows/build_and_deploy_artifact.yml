@@ -1,0 +1,124 @@
+name: Build & Deploy Trading Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Artifact version (e.g., 0.0.3). This tag must exist in the trading repository.'
+        required: true
+      server_ip:
+        description: 'IP address of the target server'
+        required: true
+      command:
+        description: >-
+          Command to run. Allowed values:
+          quote_api_to_kafka, quote_api_to_file, quote_file_to_kafka,
+          trade_api_to_kafka, trade_file_to_kafka.
+        required: true
+        default: quote_api_to_kafka
+      kafka_topic:
+        description: 'Kafka topic to use (default: quotes)'
+        required: false
+        default: quotes
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Trading Repository at Provided Tag
+        uses: actions/checkout@v4
+        with:
+          repository: trading-cz/trading
+          ref: ${{ github.event.inputs.version }}
+          token: ${{ secrets.TRADING_PAT }}
+          path: trading
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Prepare Build
+        working-directory: trading
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          echo "Using artifact version: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Build Standalone Artifact with PyInstaller
+        working-directory: trading
+        run: |
+          rm -rf build dist *.spec
+          pip install --upgrade --no-cache-dir -r requirements.txt
+          pip install pyinstaller
+          pyinstaller --onefile --name trading-${VERSION} __main__.py
+          cp data/symbols.txt dist/symbols.txt
+          ls -l dist
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "trading-${{ env.VERSION }}"
+          path: "trading/dist"
+
+  deploy:
+    needs: build  # Ensures deployment happens *after* build completes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Deployment Repo
+        uses: actions/checkout@v4
+
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: trading-${{ github.event.inputs.version }}
+          path: artifact
+
+      - name: List files
+        run: ls -l
+
+      - name: Configure SSH Key
+        env:
+          SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_hetzner
+          chmod 600 ~/.ssh/id_hetzner
+          ssh-keyscan -H "${{ github.event.inputs.server_ip }}" >> ~/.ssh/known_hosts
+
+      - name: Create .env file
+        run: |
+          cat <<EOF > .env
+          API_KEY=${{ secrets.API_KEY }}
+          API_SECRET=${{ secrets.API_SECRET }}
+          KAFKA_TOPIC=${{ github.event.inputs.kafka_topic }}
+          KAFKA_BOOTSTRAP_SERVER=localhost:9092
+          INPUT_FILE_NAME=in.json
+          OUTPUT_FILE_NAME=out.json
+          SYMBOL_FILE_NAME=/tmp/symbols.txt
+          EOF
+
+      - name: Copy Files to Remote Server
+        run: |
+          scp -i ~/.ssh/id_hetzner artifact/trading-${{ github.event.inputs.version }} root@${{ github.event.inputs.server_ip }}:/tmp/
+          scp -i ~/.ssh/id_hetzner scripts/python/install_artifact.sh root@${{ github.event.inputs.server_ip }}:/tmp/
+          scp -i ~/.ssh/id_hetzner artifact/symbols.txt root@${{ github.event.inputs.server_ip }}:/tmp/symbols.txt
+          scp -i ~/.ssh/id_hetzner .env root@${{ github.event.inputs.server_ip }}:/tmp/
+          rm -f .env
+
+      - name: Execute Deployment Script on Remote Host
+        run: |
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<EOF
+          source /tmp/.env
+          chmod +x /tmp/install_artifact.sh
+          /tmp/install_artifact.sh ${{ github.event.inputs.version }} ${{ github.event.inputs.command }}
+          EOF
+
+      - name: Cleanup SSH Configuration
+        if: always()
+        run: |
+          rm -rf ~/.ssh
+          rm -f /tmp/.env
