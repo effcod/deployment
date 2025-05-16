@@ -37,7 +37,7 @@ jobs:
 
       - name: Copy Artifact and Install Script to Remote
         run: |
-          scp -i ~/.ssh/id_hetzner artifact/trading-${{ github.event.inputs.version }} root@${{ github.event.inputs.server_ip }}:/tmp/
+          scp -i ~/.ssh/id_hetzner artifact/trading-${{ github.event.inputs.version }}.pyz root@${{ github.event.inputs.server_ip }}:/tmp/
           scp -i ~/.ssh/id_hetzner scripts/python/install_artifact.sh root@${{ github.event.inputs.server_ip }}:/tmp/
 
       - name: Execute Deployment Script on Remote Host
