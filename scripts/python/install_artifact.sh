@@ -49,3 +49,4 @@ fi
 
 # Create a new symbolic link to the latest version
 ln -s "$SYMBOL_TARGET_FILE" "$SYMLINK"
+ls -l $SYMBOL_TARGET_PATH
