@@ -9,6 +9,7 @@ on:
       server_ip:
         description: 'IP address of the target server'
         required: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -64,7 +65,7 @@ jobs:
           name: trading-${{ github.event.inputs.version }}
           path: artifact
 
-      - name: List files
+      - name: List Files
         run: ls -l
 
       - name: Configure SSH Key
@@ -90,13 +91,13 @@ jobs:
           scp -i ~/.ssh/id_hetzner artifact/trading-${{ github.event.inputs.version }} root@${{ github.event.inputs.server_ip }}:/tmp/
           scp -i ~/.ssh/id_hetzner scripts/python/install_artifact.sh root@${{ github.event.inputs.server_ip }}:/tmp/
           scp -i ~/.ssh/id_hetzner artifact/symbols.txt root@${{ github.event.inputs.server_ip }}:/tmp/symbols-${{ github.event.inputs.version }}.txt
-          scp -i ~/.ssh/id_hetzner .env root@${{ github.event.inputs.server_ip }}:/tmp/
-
+          # Place .env in a persistent location (e.g., /root/.env)
+          scp -i ~/.ssh/id_hetzner .env root@${{ github.event.inputs.server_ip }}:/root/.env
 
       - name: Execute Deployment Script on Remote Host
         run: |
-          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<EOF
-          source /tmp/.env
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<'EOF'
+          source /root/.env
           chmod +x /tmp/install_artifact.sh
           /tmp/install_artifact.sh ${{ github.event.inputs.version }}
           EOF
