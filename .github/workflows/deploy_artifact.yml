@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Artifact version (e.g., 1.0.0)'
+        description: 'Artifact version (e.g., 0.0.3)'
         required: true
       server_ip:
         description: 'IP address of the target server'
@@ -14,45 +14,37 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # Step 1: Checkout the deployment repository so that install_artifact.sh is available.
-      - name: Checkout deployment repo
+      - name: Checkout Deployment Repo
         uses: actions/checkout@v4
 
-      # Step 2: Download the artifact from the python project.
-      # (Assumes the artifact was uploaded and is available with the name
-      # "python-app-<version>" from a previous run or via a shared artifact mechanism.)
       - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
-          name: python-app-${{ github.event.inputs.version }}
+          # Artifact name was uploaded as "trading-<version>"
+          name: trading-${{ github.event.inputs.version }}
           path: artifact
 
-      # Step 3: Configure SSH key for authentication to the remote server.
       - name: Configure SSH Key
         env:
-          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+          SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          echo "$HETZNER_SSH_KEY" > ~/.ssh/id_hetzner
+          echo "$SSH_KEY" > ~/.ssh/id_hetzner
           chmod 600 ~/.ssh/id_hetzner
-          # Add the server key to known_hosts to avoid interactive prompt.
+          # Add the target server to known_hosts to prevent interactive prompts.
           ssh-keyscan -H "${{ github.event.inputs.server_ip }}" >> ~/.ssh/known_hosts
 
-      # Step 4: Copy artifact to the remote server’s /tmp/ folder.
-      - name: Copy Artifact and install script
+      - name: Copy Artifact and Install Script to Remote
         run: |
-          scp -i ~/.ssh/id_hetzner artifact/python-app-${{ inputs.version }}.tar.gz root@${{ github.inputs.server_ip }}:/tmp/
-          scp -i ~/.ssh/id_hetzner scripts/kafka/install_kafka.sh root@${{ inputs.server_ip }}:/tmp/
+          scp -i ~/.ssh/id_hetzner artifact/trading-${{ github.event.inputs.version }} root@${{ github.event.inputs.server_ip }}:/tmp/
+          scp -i ~/.ssh/id_hetzner scripts/python/install_artifact.sh root@${{ github.event.inputs.server_ip }}:/tmp/
 
-      # Step 5: Execute the installation script on the remote server.
-      - name: Execute Deployment Script
+      - name: Execute Deployment Script on Remote Host
         run: |
-          ssh -i ~/.ssh/id_hetzner root@${{ inputs.server_ip }} "chmod +x /tmp/install_artifact.sh && /tmp/install_artifact.sh ${{ github.event.inputs.version }}"
-          
-      # Step 6: Cleanup SSH configuration
-      - name: Cleanup
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "chmod +x /tmp/install_artifact.sh && /tmp/install_artifact.sh ${{ github.event.inputs.version }}"
+
+      - name: Cleanup SSH Configuration
         if: always()
         run: |
           rm -rf ~/.ssh
-          ls -l
