@@ -30,7 +30,7 @@ fi
 chmod +x "$ARTIFACT"
 
 # Change to the /opt/python directory
-cd /opt/python || { echo "Error: Cannot change directory to /opt/python"; exit 1; }
+cd /opt/python-app || { echo "Error: Cannot change directory to /opt/python-app"; exit 1; }
 
 # Define log file location
 LOGFILE="/tmp/trading-${VERSION}.log"
