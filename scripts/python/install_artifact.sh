@@ -35,13 +35,11 @@ mv "$SOURCE_ARTIFACT" "$TARGET_ARTIFACT"
 cd "$TARGET_BASE_PATH"
 chmod +x "$TARGET_ARTIFACT"
 
-ls -l /tmp
-
-SYMBOL_SOURCE_PATH="/tmp/symbols.txt"
+echo "Handle symbol files..."
+SYMBOL_SOURCE_FILE="symbols-${VERSION}.txt"
 SYMBOL_TARGET_PATH="/opt/symbols"
 mkdir -p "$SYMBOL_TARGET_PATH"
-SYMBOL_TARGET_FILE="/opt/symbols/symbols-${VERSION}.txt"
-mv "$SYMBOL_SOURCE_PATH" "$SYMBOL_TARGET_FILE"
+mv "/tmp/$SYMBOL_SOURCE_FILE" "$SYMBOL_TARGET_PATH/"
 
 SYMLINK="$SYMBOL_TARGET_PATH/symbols.txt"
 # Remove the existing symbolic link if it exists
@@ -50,5 +48,5 @@ if [ -L "$SYMLINK" ]; then
 fi
 
 # Create a new symbolic link to the latest version
-ln -s "$SYMBOL_TARGET_FILE" "$SYMLINK"
+ln -s "$SYMBOL_TARGET_PATH/$SYMBOL_SOURCE_FILE" "$SYMLINK"
 ls -l $SYMBOL_TARGET_PATH
