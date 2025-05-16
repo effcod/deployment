@@ -3,6 +3,15 @@ name: Managed Artifacts
 on:
   workflow_dispatch:
     inputs:
+      action:
+        description: 'Action to perform (list/run/kill)'
+        required: true
+        default: 'list'
+        type: choice
+        options:
+          - list
+          - run
+          - kill
       version:
         description: 'Artifact version (e.g., 0.0.3) to be deployed'
         required: true
@@ -10,14 +19,17 @@ on:
         description: 'IP address of the target server'
         required: true
       command:
-        description: 'command line args which should be executed'
+        description: 'Command line args to execute with the artifact'
         required: true
         default: '--command quote_api_to_kafka --kafka_topic quotes --symbol_file_name /opt/symbols/symbols.txt'
+      pid:
+        description: 'PID of the process to kill (required for kill action)'
+        required: false
+        default: ''
 
 jobs:
   execute:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Deployment Repo
         uses: actions/checkout@v4
@@ -32,7 +44,8 @@ jobs:
           chmod 600 ~/.ssh/id_hetzner
           ssh-keyscan -H "${{ github.event.inputs.server_ip }}" >> ~/.ssh/known_hosts
 
-      - name: Execute Deployment Script on Remote Host with Command
+      - name: Execute Deployment Script on Remote Host (run)
+        if: ${{ github.event.inputs.action == 'run' }}
         run: |
           scp -i ~/.ssh/id_hetzner scripts/python/run_artifact.sh root@${{ github.event.inputs.server_ip }}:/tmp/
           ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<EOF
@@ -40,7 +53,40 @@ jobs:
           /tmp/run_artifact.sh "${{ github.event.inputs.version }}" "${{ github.event.inputs.command }}"
           EOF
 
+      - name: List PID Files on Remote Host (list)
+        if: ${{ github.event.inputs.action == 'list' }}
+        run: |
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<'EOF'
+          echo "Listing all PID files in /opt folder:"
+          for file in /opt/*.pid; do
+            if [ -e "$file" ]; then
+              echo "File: $file"
+              cat "$file"
+            fi
+          done
+          EOF
+
+      - name: Kill Process on Remote Host (kill)
+        if: ${{ github.event.inputs.action == 'kill' }}
+        run: |
+          if [ -z "${{ github.event.inputs.pid }}" ]; then
+            echo "PID input is required for kill action" >&2
+            exit 1
+          fi
+
+          PID_TO_KILL="${{ github.event.inputs.pid }}"
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<EOF
+          # Verify if any PID file in /opt contains the provided PID
+          if grep -q "$PID_TO_KILL" /opt/*.pid 2>/dev/null; then
+            echo "PID $PID_TO_KILL found in PID files. Attempting to kill process..."
+            kill -9 "$PID_TO_KILL"
+            echo "Process $PID_TO_KILL killed."
+          else
+            echo "PID $PID_TO_KILL not found in any PID files under /opt."
+            exit 1
+          fi
+          EOF
+
       - name: Cleanup SSH Configuration
         if: always()
-        run: |
-          rm -rf ~/.ssh
+        run: rm -rf ~/.ssh
