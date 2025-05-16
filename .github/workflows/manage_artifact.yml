@@ -77,11 +77,12 @@ jobs:
 
           PID_TO_KILL="${{ github.event.inputs.pid }}"
           ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<EOF
-          # Verify if any PID file in /opt contains the provided PID
-          if grep -q "$PID_TO_KILL" /opt/*.pid 2>/dev/null; then
-            echo "PID $PID_TO_KILL found in PID files. Attempting to kill process..."
+          PID_FOUND=\$(grep -l "$PID_TO_KILL" /opt/*.pid 2>/dev/null)
+          if [ -n "\$PID_FOUND" ]; then
+            echo "PID $PID_TO_KILL found in file(s): \$PID_FOUND. Attempting to kill process..."
             kill -9 "$PID_TO_KILL"
             echo "Process $PID_TO_KILL killed."
+            rm -f \$PID_FOUND && echo "Deleted PID file(s): \$PID_FOUND"
           else
             echo "PID $PID_TO_KILL not found in any PID files under /opt."
             exit 1
