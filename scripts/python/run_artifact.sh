@@ -18,7 +18,7 @@ fi
 
 VERSION="$1"
 COMMAND="$2"
-ARTIFACT="/opt/python/trading-${VERSION}"
+ARTIFACT="/opt/python-app/trading-${VERSION}"
 
 # Verify the artifact exists
 if [ ! -f "$ARTIFACT" ]; then
