@@ -37,7 +37,7 @@ jobs:
           scp -i ~/.ssh/id_hetzner scripts/python/run_artifact.sh root@${{ github.event.inputs.server_ip }}:/tmp/
           ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<EOF
           chmod +x /tmp/run_artifact.sh
-          /tmp/run_artifact.sh ${{ github.event.inputs.version }} ${{ github.event.inputs.command }}
+          /tmp/run_artifact.sh "${{ github.event.inputs.version }}" "${{ github.event.inputs.command }}"
           EOF
 
       - name: Cleanup SSH Configuration
