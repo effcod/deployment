@@ -59,4 +59,4 @@ jobs:
         with:
           # This will upload the entire "dist" folder, which now contains both files.
           name: "trading-${{ env.VERSION }}"
-          path: "trading/dist/trading-${{ env.VERSION }}"
+          path: "trading/dist"
