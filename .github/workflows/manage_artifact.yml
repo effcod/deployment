@@ -15,7 +15,7 @@ on:
       command:
         description: 'command line args which should be executed'
         required: true
-        default: '--command quote_api_to_kafka --kafka_topic quotes'
+        default: '--command quote_api_to_kafka --kafka_topic quotes --symbol_file_name /opt/symbols/symbols.txt'
 
 jobs:
   execute:
