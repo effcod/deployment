@@ -1,0 +1,80 @@
+name: Build & Upload Zipapp Artifact
+
+on:
+  push:
+    tags:
+      - "*"  # Trigger on any new tag in the deploy repository (if applicable)
+  workflow_dispatch:
+    inputs:
+      artifact_tag:
+        description: >
+          Artifact version (e.g., 20250427). When triggering manually, supply a version.
+        required: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the source code from the trading repository.
+      - name: Checkout Trading Repository
+        uses: actions/checkout@v4
+        with:
+          repository: trading-cz/trading
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: trading
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      # Step 2: Determine the artifact version.
+      - name: Parse Version Tag and Prepare Build
+        working-directory: trading
+        run: |
+          # Use manual input if provided; otherwise extract version from the tag.
+          if [ -n "${{ github.event.inputs.artifact_tag }}" ]; then
+            VERSION="${{ github.event.inputs.artifact_tag }}"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            echo "Error: No version provided and GITHUB_REF is not a tag. Exiting."
+            exit 1
+          fi
+          echo "Using artifact version: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      # Step 3: Build the zipapp artifact.
+      - name: Build Zipapp Artifact
+        working-directory: trading
+        run: |
+          # Remove any previous build folder and create a fresh one.
+          rm -rf build && mkdir build
+          
+          # Install dependencies from requirements.txt into the build folder.
+          pip install --upgrade --no-cache-dir -r requirements.txt --target build
+          
+          # Copy the entry point (__main__.py) and the inner source folder.
+          cp __main__.py build/
+          cp -r trading/ build/trading
+          
+          # Also include the data folder if it exists.
+          if [ -d data ]; then
+            cp -r data build/data
+          fi
+          
+          # Build the zipapp. With __main__.py in place, it will execute correctly.
+          python -m zipapp build -o trading-${VERSION}.pyz
+          
+          # List the produced file for verification.
+          ls -l
+
+      # Step 4: Upload the built artifact.
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "trading-${{ env.VERSION }}"
+          # Since we checked out the trading repository into the subfolder "trading"
+          # and built the artifact there, its path is below the working directory.
+          path: "trading/trading-${{ env.VERSION }}.pyz"
