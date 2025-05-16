@@ -33,34 +33,13 @@ chmod +x "$ARTIFACT"
 # Change to the /opt/python-app directory
 cd /opt/python-app || { echo "Error: Cannot change directory to /opt/python-app"; exit 1; }
 
-# Define the start date and the log file location in /opt (with date included)
-start_date=$(date +'%Y-%m-%d')
-LOGFILE="/opt/trading-${VERSION}-${start_date}.log"
-echo "Artifact started on: $start_date" > "$LOGFILE"
+# Define the start time with date and time down to seconds for a unique log filename
+start_time=$(date +'%Y-%m-%d-%H-%M-%S')
+LOGFILE="/opt/trading-${VERSION}-${start_time}.log"
+echo "Artifact started on: ${start_time}" > "$LOGFILE"
 
 echo "Starting artifact '${ARTIFACT}' with command '$COMMAND'..."
 echo "Logs will be written to '$LOGFILE'."
 
 # Run the artifact in the background using nohup so it survives the SSH session.
 nohup "$ARTIFACT" $COMMAND >> "$LOGFILE" 2>&1 &
-initial_pid=$!
-echo "Initial PID captured: $initial_pid"
-
-# Wait briefly to allow the process to potentially fork (if daemonizing)
-sleep 1
-
-# Check if a child process exists (which would be the real daemonized app)
-child_pid=$(ps --no-headers -o pid --ppid $initial_pid | head -n 1 | tr -d '[:space:]')
-
-if [ -n "$child_pid" ]; then
-    PID=$child_pid
-    echo "Detected forked child process. Using child PID: $PID"
-else
-    PID=$initial_pid
-    echo "No child process detected. Using initial PID: $PID"
-fi
-
-# Write the PID to a file named as <PID>.pid in /opt.
-PID_FILE="/opt/${PID}.pid"
-echo "$PID" > "$PID_FILE"
-echo "PID file written to '$PID_FILE'."
