@@ -28,7 +28,7 @@ jobs:
       - name: Parse Tag and Prepare Build
         working-directory: trading
         run: |
-          # Use the provided tag as the version number
+          # Use the provided tag as the version number.
           VERSION="${{ github.event.inputs.artifact_tag }}"
           echo "Using artifact version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
@@ -36,25 +36,27 @@ jobs:
       - name: Build Standalone Artifact with PyInstaller
         working-directory: trading
         run: |
-          # Clean any previous PyInstaller artifacts
+          # Clean any previous PyInstaller artifacts.
           rm -rf build dist *.spec
 
-          # Install application dependencies and PyInstaller
+          # Install application dependencies and PyInstaller.
           pip install --upgrade --no-cache-dir -r requirements.txt
           pip install pyinstaller
 
-          # Build the standalone executable using PyInstaller.
-          # The --onefile option creates a single-file executable.
+          # Build the standalone executable.
+          # The --onefile option creates a single-file bundle.
           # The --name option names the executable with the version.
-          # The --add-data option bundles the symbols file (from data/symbols.txt)
-          # into the root (.) of the bundled artifact.
-          pyinstaller --onefile --name trading-${VERSION} --add-data "data/symbols.txt:." __main__.py
+          pyinstaller --onefile --name trading-${VERSION} __main__.py
 
-          # List the produced executable in the dist folder for verification.
+          # Copy symbols.txt from data/ into dist so it sits next to the executable.
+          cp data/symbols.txt dist/symbols.txt
+
+          # List the contents of the dist folder for verification.
           ls -l dist
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
+          # This will upload the entire "dist" folder, which now contains both files.
           name: "trading-${{ env.VERSION }}"
           path: "trading/dist/trading-${{ env.VERSION }}"
