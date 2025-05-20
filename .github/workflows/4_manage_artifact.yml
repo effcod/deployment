@@ -1,4 +1,4 @@
-name: Managed Artifacts
+name: 4. Managed Artifacts
 
 on:
   workflow_dispatch:
