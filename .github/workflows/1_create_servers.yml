@@ -1,4 +1,4 @@
-name: Hetzner Server Creation
+name: 1. Server Creation
 
 on:
   workflow_dispatch:
