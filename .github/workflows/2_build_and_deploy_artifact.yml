@@ -1,4 +1,4 @@
-name: Build & Deploy Trading Artifact
+name: 3. Build & Deploy Trading Artifact
 
 on:
   workflow_dispatch:
