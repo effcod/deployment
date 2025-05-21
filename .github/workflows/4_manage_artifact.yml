@@ -80,7 +80,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<'EOF'
           echo "===== Reading Log Files ====="
-          LOG_FILES=$(find /opt -name "*.log" -type f)
+          LOG_FILES=$(find /opt -maxdepth 1 -name "*.log" -type f)
           
           if [ -n "${{ github.event.inputs.version }}" ]; then
             echo "Filtering logs for version ${{ github.event.inputs.version }}..."
