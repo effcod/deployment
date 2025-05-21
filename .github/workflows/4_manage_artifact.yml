@@ -14,13 +14,13 @@ on:
           - kill
       version:
         description: 'Artifact version (e.g., 0.0.3) to be deployed'
-        required: true
+        required: false
       server_ip:
         description: 'IP address of the target server'
         required: true
       command:
         description: 'Command line args to execute with the artifact'
-        required: true
+        required: false
         default: '--command quote_api_to_kafka --kafka_topic quotes --symbol_file_name /opt/symbols/symbols.txt'
       pid:
         description: 'PID of the process to kill (required for kill action)'
@@ -44,6 +44,14 @@ jobs:
           chmod 600 ~/.ssh/id_hetzner
           ssh-keyscan -H "${{ github.event.inputs.server_ip }}" >> ~/.ssh/known_hosts
 
+      - name: Validate version for run action
+        if: ${{ github.event.inputs.action == 'run' }}
+        run: |
+          if [ -z "${{ github.event.inputs.version }}" ]; then
+            echo "Error: Version parameter is required for run action" >&2
+            exit 1
+          fi
+
       - name: Execute Deployment Script on Remote Host (run)
         if: ${{ github.event.inputs.action == 'run' }}
         run: |
@@ -64,6 +72,29 @@ jobs:
               PID=`cat "$file"`
               echo "File: $file: PID:$PID"
             fi
+          done
+          EOF
+
+      - name: Read Logs (list)
+        if: ${{ github.event.inputs.action == 'list' }}
+        run: |
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} <<'EOF'
+          echo "===== Reading Log Files ====="
+          LOG_FILES=$(find /opt -name "*.log" -type f)
+          
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "Filtering logs for version ${{ github.event.inputs.version }}..."
+            LOG_FILES=$(echo "$LOG_FILES" | grep "${{ github.event.inputs.version }}" || echo "")
+            if [ -z "$LOG_FILES" ]; then
+              echo "No log files found for version ${{ github.event.inputs.version }}"
+              exit 0
+            fi
+          fi
+          
+          echo "$LOG_FILES" | while read log_file; do
+            echo "===== Last 500 lines of $log_file ====="
+            tail -n 500 "$log_file"
+            echo "===== End of $log_file ====="
           done
           EOF
 
