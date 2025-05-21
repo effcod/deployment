@@ -91,10 +91,18 @@ jobs:
             fi
           fi
           
+          # Determine number of lines to display
+          LINES_TO_DISPLAY=10
+          if [ -n "${{ github.event.inputs.pid }}" ]; then
+            LINES_TO_DISPLAY="${{ github.event.inputs.pid }}"
+          fi
+          
           echo "$LOG_FILES" | while read log_file; do
-            echo "===== Last 500 lines of $log_file ====="
-            tail -n 500 "$log_file"
+            echo "===== ===== ===== ===== ===== ===== ===== =====  ====="
+            echo "===== Last $LINES_TO_DISPLAY lines of $log_file ====="
+            tail -n $LINES_TO_DISPLAY "$log_file"
             echo "===== End of $log_file ====="
+            echo "===== ===== ===== ===== ===== ===== ===== =====  ====="
           done
           EOF
 
