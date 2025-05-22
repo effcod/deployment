@@ -10,19 +10,31 @@ CONSUMER_GROUPS=$($KAFKA_PATH/bin/kafka-consumer-groups.sh --bootstrap-server lo
 
 echo "Checking for uncommitted consumer offsets for topic $TOPIC..."
 
+if [ -z "$CONSUMER_GROUPS" ]; then
+  echo "No consumer groups found."
+  echo "This means either:"
+  echo "  1. No consumers have connected to this Kafka cluster"
+  echo "  2. All consumers are using 'enable.auto.commit=false' and not manually committing offsets"
+  echo "  3. Consumers have only just started without processing any messages yet"
+  echo "====================================================================="
+  exit 0
+fi
+
 for GROUP in $CONSUMER_GROUPS; do
   echo "Consumer Group: $GROUP"
   
-  # Get the end offset for each partition of the topic
-  END_OFFSETS=$($KAFKA_PATH/bin/kafka-run-class.sh kafka.tools.GetOffsetShell --broker-list localhost:9092 --topic $TOPIC --time -1)
-  
-  # Get consumer group details
+  # Get consumer group details using described command
   GROUP_INFO=$($KAFKA_PATH/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group $GROUP --describe)
   
   # Filter for the topic we're interested in
   TOPIC_INFO=$(echo "$GROUP_INFO" | grep $TOPIC)
   
   if [ -n "$TOPIC_INFO" ]; then
+    # This is a two-step approach to detect uncommitted offsets:
+    # 1. Check if there are inconsistencies in the lag reported by the consumer group tool
+    # 2. Check if lag is changing over time despite no new messages being produced
+    
+    # First check - parse current info and look for warning signs
     echo "$TOPIC_INFO" | while read -r line; do
       # Extract information from the consumer group info
       PARTITION=$(echo "$line" | awk '{print $3}')
@@ -30,24 +42,51 @@ for GROUP in $CONSUMER_GROUPS; do
       LOG_END_OFFSET=$(echo "$line" | awk '{print $5}')
       LAG=$(echo "$line" | awk '{print $6}')
       
-      # Get the end offset from kafka tools (this is the true latest offset)
-      ACTUAL_END_OFFSET=$(echo "$END_OFFSETS" | grep "$TOPIC:$PARTITION:" | awk -F ":" '{print $3}')
+      # Check for common issue: positive lag but no movement
+      echo "  - Partition $PARTITION: Current offset: $CURRENT_OFFSET, End offset: $LOG_END_OFFSET, Lag: $LAG"
       
-      # If the log end offset from consumer group differs from the actual end offset,
-      # it might indicate uncommitted offsets or a stale consumer
-      if [ "$LOG_END_OFFSET" != "$ACTUAL_END_OFFSET" ]; then
-        ACTUAL_LAG=$((ACTUAL_END_OFFSET - CURRENT_OFFSET))
-        echo "  - Partition $PARTITION: Uncommitted/stale offset detected!"
-        echo "    - Current offset: $CURRENT_OFFSET"
-        echo "    - Reported log end offset: $LOG_END_OFFSET"
-        echo "    - Actual log end offset: $ACTUAL_END_OFFSET"
-        echo "    - Reported lag: $LAG"
-        echo "    - Actual lag: $ACTUAL_LAG"
-        echo "    - IMPORTANT: This indicates the consumer is not committing offsets properly"
-      else
-        echo "  - Partition $PARTITION: Offsets properly committed. Current: $CURRENT_OFFSET, End: $LOG_END_OFFSET, Lag: $LAG"
+      # If lag is large, it's a warning sign
+      if [ "$LAG" -gt 100 ]; then
+        echo "    - WARNING: Significant lag detected! This may indicate consumer processing issues or uncommitted offsets."
+      fi
+      
+      # Check for a common issue: inconsistent offset values
+      EXPECTED_LAG=$((LOG_END_OFFSET - CURRENT_OFFSET))
+      if [ "$LAG" != "$EXPECTED_LAG" ]; then
+        echo "    - ALERT: Inconsistent offset values detected!"
+        echo "      Reported lag: $LAG, but calculated lag: $EXPECTED_LAG"
+        echo "      This inconsistency often indicates uncommitted offsets."
       fi
     done
+    
+    # Second check - monitor offset movement over time
+    echo "  - Monitoring offset movement for 5 seconds to detect uncommitted offsets..."
+    FIRST_INFO=$($KAFKA_PATH/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group $GROUP --describe | grep $TOPIC)
+    sleep 5
+    SECOND_INFO=$($KAFKA_PATH/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group $GROUP --describe | grep $TOPIC)
+    
+    # Check if offsets changed
+    if [ "$FIRST_INFO" = "$SECOND_INFO" ]; then
+      echo "  - No offset movement detected in 5 seconds."
+      echo "    This could be normal if no new messages are being produced or consumed."
+    else
+      echo "  - Offsets changed in 5 seconds. This indicates active consumption."
+      echo "    First check:"
+      echo "$FIRST_INFO"
+      echo "    Second check (5 seconds later):"
+      echo "$SECOND_INFO"
+      
+      # Extract and compare specific offsets to see if consumption is happening but commits aren't
+      FIRST_CURRENT=$(echo "$FIRST_INFO" | awk '{print $4}')
+      SECOND_CURRENT=$(echo "$SECOND_INFO" | awk '{print $4}')
+      FIRST_LAG=$(echo "$FIRST_INFO" | awk '{print $6}')
+      SECOND_LAG=$(echo "$SECOND_INFO" | awk '{print $6}')
+      
+      if [ "$FIRST_CURRENT" = "$SECOND_CURRENT" ] && [ "$FIRST_LAG" != "$SECOND_LAG" ]; then
+        echo "    - IMPORTANT: Current offset isn't changing but lag is."
+        echo "      This strongly indicates the consumer is processing messages but NOT committing offsets."
+      fi
+    fi
   else
     echo "  - No information for topic $TOPIC in this consumer group"
   fi
