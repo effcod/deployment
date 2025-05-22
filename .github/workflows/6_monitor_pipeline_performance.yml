@@ -1,0 +1,77 @@
+name: 6. Monitor Pipeline Performance
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_ip:
+        description: 'IP address of the target server'
+        required: true
+      topic:
+        description: 'Kafka topic to monitor'
+        required: true
+        default: 'quotes'
+      check_duration:
+        description: 'Duration to collect metrics (in seconds)'
+        required: false
+        default: '60'
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Deployment Repo
+        uses: actions/checkout@v4
+
+      - name: Configure SSH Key
+        env:
+          SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_hetzner
+          chmod 600 ~/.ssh/id_hetzner
+          ssh-keyscan -H "${{ github.event.inputs.server_ip }}" >> ~/.ssh/known_hosts
+        continue-on-error: false  # This step is critical, so don't continue if it fails
+
+      - name: Copy Monitoring Scripts to Server
+        run: |
+          echo "Copying monitoring scripts to server..."
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "mkdir -p /tmp/monitor"
+          
+          # Copy all monitoring scripts
+          scp -i ~/.ssh/id_hetzner scripts/monitor/pipeline_monitor.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
+          scp -i ~/.ssh/id_hetzner scripts/monitor/analyze_topic_lag.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
+          scp -i ~/.ssh/id_hetzner scripts/monitor/check_uncommitted_offsets.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
+          scp -i ~/.ssh/id_hetzner scripts/monitor/provide_recommendations.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
+          
+          # Make all scripts executable
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "chmod +x /tmp/monitor/*.sh"
+        continue-on-error: false  # This step is critical, so don't continue if it fails
+
+      - name: Run Main Monitoring Script
+        run: |
+          echo "Running pipeline monitoring for ${{ github.event.inputs.check_duration }} seconds on topic ${{ github.event.inputs.topic }}..."
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/pipeline_monitor.sh ${{ github.event.inputs.topic }} ${{ github.event.inputs.check_duration }}"
+        continue-on-error: true  # Continue even if this step fails
+
+      - name: Analyze Kafka Topic Lag
+        run: |
+          echo "Analyzing Kafka topic lag..."
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/analyze_topic_lag.sh ${{ github.event.inputs.topic }}"
+        continue-on-error: true  # Continue even if this step fails
+
+      - name: Check for Uncommitted Consumer Offsets
+        run: |
+          echo "Checking for uncommitted consumer offsets..."
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/check_uncommitted_offsets.sh ${{ github.event.inputs.topic }}"
+        continue-on-error: true  # Continue even if this step fails
+
+      - name: Provide Recommendations
+        run: |
+          echo "Providing recommendations based on monitoring results..."
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/provide_recommendations.sh"
+        continue-on-error: true  # Continue even if this step fails
+
+      - name: Cleanup SSH Configuration
+        if: always()  # This step always runs, even if previous steps fail
+        run: rm -rf ~/.ssh
