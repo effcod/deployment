@@ -24,10 +24,10 @@ for GROUP in $CONSUMER_GROUPS; do
   echo "Consumer Group: $GROUP"
   
   # Get consumer group details using described command
-  GROUP_INFO=$($KAFKA_PATH/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group $GROUP --describe)
+  GROUP_INFO=$($KAFKA_PATH/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group "$GROUP" --describe)
   
   # Filter for the topic we're interested in
-  TOPIC_INFO=$(echo "$GROUP_INFO" | grep $TOPIC)
+  TOPIC_INFO=$(echo "$GROUP_INFO" | grep "$TOPIC")
   
   if [ -n "$TOPIC_INFO" ]; then
     # This is a two-step approach to detect uncommitted offsets:
@@ -45,25 +45,27 @@ for GROUP in $CONSUMER_GROUPS; do
       # Check for common issue: positive lag but no movement
       echo "  - Partition $PARTITION: Current offset: $CURRENT_OFFSET, End offset: $LOG_END_OFFSET, Lag: $LAG"
       
-      # If lag is large, it's a warning sign
-      if [ "$LAG" -gt 100 ]; then
+      # If lag is large, it's a warning sign - only if LAG is a number
+      if [[ "$LAG" =~ ^[0-9]+$ ]] && [ "$LAG" -gt 100 ]; then
         echo "    - WARNING: Significant lag detected! This may indicate consumer processing issues or uncommitted offsets."
       fi
       
-      # Check for a common issue: inconsistent offset values
-      EXPECTED_LAG=$((LOG_END_OFFSET - CURRENT_OFFSET))
-      if [ "$LAG" != "$EXPECTED_LAG" ]; then
-        echo "    - ALERT: Inconsistent offset values detected!"
-        echo "      Reported lag: $LAG, but calculated lag: $EXPECTED_LAG"
-        echo "      This inconsistency often indicates uncommitted offsets."
+      # Check for a common issue: inconsistent offset values - but only if both values are valid numbers
+      if [[ "$CURRENT_OFFSET" =~ ^[0-9]+$ ]] && [[ "$LOG_END_OFFSET" =~ ^[0-9]+$ ]]; then
+        EXPECTED_LAG=$((LOG_END_OFFSET - CURRENT_OFFSET))
+        if [[ "$LAG" =~ ^[0-9]+$ ]] && [ "$LAG" != "$EXPECTED_LAG" ]; then
+          echo "    - ALERT: Inconsistent offset values detected!"
+          echo "      Reported lag: $LAG, but calculated lag: $EXPECTED_LAG"
+          echo "      This inconsistency often indicates uncommitted offsets."
+        fi
       fi
     done
     
     # Second check - monitor offset movement over time
     echo "  - Monitoring offset movement for 5 seconds to detect uncommitted offsets..."
-    FIRST_INFO=$($KAFKA_PATH/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group $GROUP --describe | grep $TOPIC)
+    FIRST_INFO=$($KAFKA_PATH/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group "$GROUP" --describe | grep "$TOPIC")
     sleep 5
-    SECOND_INFO=$($KAFKA_PATH/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group $GROUP --describe | grep $TOPIC)
+    SECOND_INFO=$($KAFKA_PATH/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group "$GROUP" --describe | grep "$TOPIC")
     
     # Check if offsets changed
     if [ "$FIRST_INFO" = "$SECOND_INFO" ]; then
@@ -71,20 +73,23 @@ for GROUP in $CONSUMER_GROUPS; do
       echo "    This could be normal if no new messages are being produced or consumed."
     else
       echo "  - Offsets changed in 5 seconds. This indicates active consumption."
-      echo "    First check:"
-      echo "$FIRST_INFO"
-      echo "    Second check (5 seconds later):"
-      echo "$SECOND_INFO"
       
-      # Extract and compare specific offsets to see if consumption is happening but commits aren't
+      # Try to extract specific values to compare
       FIRST_CURRENT=$(echo "$FIRST_INFO" | awk '{print $4}')
       SECOND_CURRENT=$(echo "$SECOND_INFO" | awk '{print $4}')
       FIRST_LAG=$(echo "$FIRST_INFO" | awk '{print $6}')
       SECOND_LAG=$(echo "$SECOND_INFO" | awk '{print $6}')
       
-      if [ "$FIRST_CURRENT" = "$SECOND_CURRENT" ] && [ "$FIRST_LAG" != "$SECOND_LAG" ]; then
-        echo "    - IMPORTANT: Current offset isn't changing but lag is."
-        echo "      This strongly indicates the consumer is processing messages but NOT committing offsets."
+      # Only perform the comparison if we have valid numeric values
+      if [[ "$FIRST_CURRENT" =~ ^[0-9]+$ ]] && [[ "$SECOND_CURRENT" =~ ^[0-9]+$ ]] && 
+         [[ "$FIRST_LAG" =~ ^[0-9]+$ ]] && [[ "$SECOND_LAG" =~ ^[0-9]+$ ]]; then
+        
+        if [ "$FIRST_CURRENT" = "$SECOND_CURRENT" ] && [ "$FIRST_LAG" != "$SECOND_LAG" ]; then
+          echo "    - IMPORTANT: Current offset isn't changing but lag is."
+          echo "      This strongly indicates the consumer is processing messages but NOT committing offsets."
+        fi
+      else
+        echo "    - Unable to compare numeric values from different measurements."
       fi
     fi
   else
