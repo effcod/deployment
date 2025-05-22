@@ -125,7 +125,7 @@ check_kafka_metrics() {
 check_kafka_jvm_metrics() {
   echo "$(timestamp) - KAFKA JVM METRICS:"
   # Look for Kafka process with different possible patterns
-  KAFKA_PID=$(ps aux | grep -E 'kafka\.Kafka|kafka\.ServerMain|kafka\.server\.KafkaServer' | grep -v grep | awk '{print $2}' | head -1)
+  KAFKA_PID=$(ps aux | grep -E 'kafka\.Kafka|kafka\.ServerMain|kafka\.server\.KafkaServer|org\.apache\.kafka\.Kafka' | grep -v grep | awk '{print $2}' | head -1)
   
   if [ -n "$KAFKA_PID" ]; then
     echo "Kafka Process found with PID: $KAFKA_PID"
@@ -187,6 +187,14 @@ check_uncommitted_offsets() {
         if [ "$LAG" -gt 100 ]; then
           echo "    - WARNING: Significant lag detected! This may indicate consumer processing issues."
         fi
+        
+        # Check for a common issue: inconsistent offset values
+        EXPECTED_LAG=$((LOG_END_OFFSET - CURRENT_OFFSET))
+        if [ "$LAG" != "$EXPECTED_LAG" ]; then
+          echo "    - ALERT: Inconsistent offset values detected!"
+          echo "      Reported lag: $LAG, but calculated lag: $EXPECTED_LAG"
+          echo "      This inconsistency often indicates uncommitted offsets."
+        fi
       done
     else
       echo "  - No information for topic $TOPIC in this consumer group"
@@ -200,7 +208,7 @@ check_broker_pressure() {
   echo "$(timestamp) - BROKER RESOURCE PRESSURE:"
   
   # Look for Kafka process with different possible patterns
-  KAFKA_PID=$(ps aux | grep -E 'kafka\.Kafka|kafka\.ServerMain|kafka\.server\.KafkaServer' | grep -v grep | awk '{print $2}' | head -1)
+  KAFKA_PID=$(ps aux | grep -E 'kafka\.Kafka|kafka\.ServerMain|kafka\.server\.KafkaServer|org\.apache\.kafka\.Kafka' | grep -v grep | awk '{print $2}' | head -1)
   
   if [ -n "$KAFKA_PID" ]; then
     echo "  - Kafka process found with PID: $KAFKA_PID"
@@ -226,6 +234,22 @@ check_broker_pressure() {
       if [ "$KAFKA_MEM_INT" -gt 80 ]; then
         echo "  - WARNING: Kafka is under memory pressure (>80% memory usage)"
         echo "  - High memory pressure can cause broker delays and affect performance"
+      fi
+    fi
+    
+    # Try to get JVM heap usage if possible
+    if command -v jcmd &> /dev/null; then
+      KAFKA_HEAP_USED=$(jcmd $KAFKA_PID GC.heap_info 2>/dev/null | grep "used" | awk '{print $3}')
+      KAFKA_HEAP_CAPACITY=$(jcmd $KAFKA_PID GC.heap_info 2>/dev/null | grep "capacity" | awk '{print $3}')
+      
+      if [ -n "$KAFKA_HEAP_USED" ] && [ -n "$KAFKA_HEAP_CAPACITY" ]; then
+        HEAP_USAGE_PCT=$((KAFKA_HEAP_USED * 100 / KAFKA_HEAP_CAPACITY))
+        echo "  - Kafka Heap Usage: $HEAP_USAGE_PCT% ($KAFKA_HEAP_USED / $KAFKA_HEAP_CAPACITY)"
+        
+        if [ $HEAP_USAGE_PCT -gt 80 ]; then
+          echo "  - WARNING: Kafka is under memory pressure (>80% heap usage)"
+          echo "  - High memory pressure can cause broker delays and affect performance"
+        fi
       fi
     fi
   else
