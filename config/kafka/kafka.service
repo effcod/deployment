@@ -9,8 +9,8 @@ Type=forking
 WorkingDirectory=/opt/kafka
 User=kraft
 Group=kraft
-Environment=KAFKA_HEAP_OPTS="-Xmx2G -Xms2G"
-Environment=KAFKA_JVM_PERFORMANCE_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+ExplicitGCInvokesConcurrent"
+Environment=KAFKA_HEAP_OPTS="-Xmx1G -Xms1G -XX:MaxDirectMemorySize=1G"
+Environment=KAFKA_JVM_PERFORMANCE_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+ExplicitGCInvokesConcurrent -XX:MaxInlineLevel=15 -XX:CompileThreshold=10000"
 Environment="JAVA_HOME=/usr/lib/jvm/default-java"
 ExecStart=/opt/kafka/bin/kafka-server-start.sh -daemon /opt/kafka/config/kraft/server.properties --override controller.mode=kraft
 ExecStop=/opt/kafka/bin/kafka-server-stop.sh /opt/kafka/config/kraft/server.properties --override controller.mode=kraft
