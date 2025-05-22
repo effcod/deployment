@@ -3,7 +3,7 @@
 set -e
 
 # Constants
-KAFKA_VERSION="3.8.0"
+KAFKA_VERSION="3.9.1"
 KAFKA_INSTALL_DIR="/opt/kafka_2.13-$KAFKA_VERSION"
 KAFKA_SYMLINK="/opt/kafka"
 KAFKA_USER="kraft"
