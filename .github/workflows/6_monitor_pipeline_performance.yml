@@ -38,39 +38,50 @@ jobs:
           echo "Copying monitoring scripts to server..."
           ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "mkdir -p /tmp/monitor"
           
-          # Copy all monitoring scripts
-          scp -i ~/.ssh/id_hetzner scripts/monitor/pipeline_monitor.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
-          scp -i ~/.ssh/id_hetzner scripts/monitor/analyze_topic_lag.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
-          scp -i ~/.ssh/id_hetzner scripts/monitor/check_uncommitted_offsets.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
+          # Copy all new monitoring scripts
+          scp -i ~/.ssh/id_hetzner scripts/monitor/system_status.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
+          scp -i ~/.ssh/id_hetzner scripts/monitor/kafka_infrastructure.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
+          scp -i ~/.ssh/id_hetzner scripts/monitor/topic_analysis.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
+          scp -i ~/.ssh/id_hetzner scripts/monitor/throughput_analysis.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
           scp -i ~/.ssh/id_hetzner scripts/monitor/provide_recommendations.sh root@${{ github.event.inputs.server_ip }}:/tmp/monitor/
           
           # Make all scripts executable
           ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "chmod +x /tmp/monitor/*.sh"
         continue-on-error: false  # This step is critical, so don't continue if it fails
 
-      - name: Run Main Monitoring Script
+      - name: "Step 1: System Status Overview"
         run: |
-          echo "Running pipeline monitoring for ${{ github.event.inputs.check_duration }} seconds on topic ${{ github.event.inputs.topic }}..."
-          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/pipeline_monitor.sh ${{ github.event.inputs.topic }} ${{ github.event.inputs.check_duration }}"
-        continue-on-error: true  # Continue even if this step fails
+          echo "=== STEP 1: SYSTEM STATUS OVERVIEW ==="
+          echo "Checking system resources (CPU, Memory, IO, Network)..."
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/system_status.sh"
+        continue-on-error: true
 
-      - name: Analyze Kafka Topic Lag
+      - name: "Step 2: Kafka Infrastructure Status"
         run: |
-          echo "Analyzing Kafka topic lag..."
-          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/analyze_topic_lag.sh ${{ github.event.inputs.topic }}"
-        continue-on-error: true  # Continue even if this step fails
+          echo "=== STEP 2: KAFKA INFRASTRUCTURE STATUS ==="
+          echo "Checking Kafka brokers, topics and general health..."
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/kafka_infrastructure.sh"
+        continue-on-error: true
 
-      - name: Check for Uncommitted Consumer Offsets
+      - name: "Step 3: Topic Analysis & Message Inspection"
         run: |
-          echo "Checking for uncommitted consumer offsets..."
-          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/check_uncommitted_offsets.sh ${{ github.event.inputs.topic }}"
-        continue-on-error: true  # Continue even if this step fails
+          echo "=== STEP 3: TOPIC ANALYSIS & MESSAGE INSPECTION ==="
+          echo "Analyzing topic '${{ github.event.inputs.topic }}' - messages, timestamps, delays..."
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/topic_analysis.sh ${{ github.event.inputs.topic }}"
+        continue-on-error: true
 
-      - name: Provide Recommendations
+      - name: "Step 4: Throughput & Traffic Analysis"
         run: |
-          echo "Providing recommendations based on monitoring results..."
+          echo "=== STEP 4: THROUGHPUT & TRAFFIC ANALYSIS ==="
+          echo "Calculating throughput and traffic metrics for ${{ github.event.inputs.check_duration }} seconds..."
+          ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/throughput_analysis.sh ${{ github.event.inputs.topic }} ${{ github.event.inputs.check_duration }}"
+        continue-on-error: true
+
+      - name: "Final: Summary & Recommendations"
+        run: |
+          echo "=== MONITORING SUMMARY & RECOMMENDATIONS ==="
           ssh -i ~/.ssh/id_hetzner root@${{ github.event.inputs.server_ip }} "bash /tmp/monitor/provide_recommendations.sh"
-        continue-on-error: true  # Continue even if this step fails
+        continue-on-error: true
 
       - name: Cleanup SSH Configuration
         if: always()  # This step always runs, even if previous steps fail

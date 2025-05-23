@@ -80,28 +80,9 @@ check_kafka_metrics() {
   $KAFKA_PATH/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --all-groups --describe | grep "$TOPIC" || echo "No consumer groups found for this topic"
   
   echo "Latest Messages (sample):"
-  # Get end offset using kafka-run-class with the correct class path
-  END_OFFSET=$($KAFKA_PATH/bin/kafka-run-class.sh kafka.admin.ConsumerGroupCommand --bootstrap-server localhost:9092 --describe --offsets --topic "$TOPIC" | grep -v TOPIC | head -n1 | awk '{print $4}' 2>/dev/null)
-  
-  # If we couldn't get the offset, try an alternative method
-  if [ -z "$END_OFFSET" ]; then
-    echo "Unable to get end offset using ConsumerGroupCommand, trying alternative method..."
-    END_OFFSET=$($KAFKA_PATH/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic "$TOPIC" --from-beginning --max-messages 1 2>/dev/null | wc -l)
-    if [ "$END_OFFSET" -gt "0" ]; then
-      echo "Topic contains at least one message"
-    else
-      echo "Topic appears to be empty or inaccessible"
-      return
-    fi
-  fi
-  
-  # Calculate starting offset (5 messages before end or 0)
-  START_OFFSET=0
-  if [ -n "$END_OFFSET" ] && [ "$END_OFFSET" -gt 5 ]; then
-    START_OFFSET=$((END_OFFSET - 5))
-  fi
-  
+  # We'll use a simpler approach that doesn't require ConsumerGroupCommand
   echo "Attempting to read messages from the topic..."
+  
   # Get the messages
   $KAFKA_PATH/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic "$TOPIC" --from-beginning --max-messages 5 --property print.timestamp=true 2>/dev/null | while read -r line; do
     # Extract Kafka timestamp and message timestamp if it exists
@@ -110,29 +91,46 @@ check_kafka_metrics() {
     
     echo "Message: $MESSAGE"
     
-    # Try to extract timestamp from JSON message - look for different patterns
+    # Try to extract timestamp from JSON message - with improved parsing for various formats
     if echo "$MESSAGE" | grep -q "timestamp"; then
-      # Try with double quotes first
+      # Get everything between "timestamp": and the next comma or closing bracket
       MESSAGE_TS=$(echo "$MESSAGE" | grep -o '"timestamp":"[^"]*"' | cut -d'"' -f4)
       
-      # If that didn't work, try with different quotes or formats
+      # If that didn't work, try other formats
       if [ -z "$MESSAGE_TS" ]; then
         MESSAGE_TS=$(echo "$MESSAGE" | grep -o "'timestamp':'[^']*'" | cut -d"'" -f4)
       fi
       
+      # Try with more relaxed pattern
       if [ -z "$MESSAGE_TS" ]; then
-        # Fix for SC1078 - properly escape the quotes and brackets
-        MESSAGE_TS=$(echo "$MESSAGE" | grep -o "timestamp[\"': ]*[^\"',}]*" | sed "s/timestamp[\"': ]*//g")
+        MESSAGE_TS=$(echo "$MESSAGE" | grep -o '"timestamp":[^,}]*' | cut -d':' -f2- | tr -d ' "')
       fi
       
       if [ -n "$MESSAGE_TS" ]; then
         echo "  - Found timestamp in message: $MESSAGE_TS"
-        # Convert ISO timestamp to epoch for comparison
-        MESSAGE_EPOCH=$(date -d "$MESSAGE_TS" +%s 2>/dev/null)
-        KAFKA_EPOCH=$(date -d "@$KAFKA_TS" +%s 2>/dev/null || echo "")
+        
+        # Try multiple date formats for parsing
+        if [[ "$MESSAGE_TS" == *"T"* && "$MESSAGE_TS" == *"Z"* ]]; then
+          # ISO format like 2025-05-22T08:15:29.189985Z
+          # Convert to format date can understand
+          SIMPLIFIED_TS=$(echo "$MESSAGE_TS" | sed 's/\.[0-9]*Z$/Z/' | sed 's/Z$//' | sed 's/T/ /')
+          MESSAGE_EPOCH=$(date -d "$SIMPLIFIED_TS" +%s 2>/dev/null || echo "")
+        else
+          # Try generic parsing
+          MESSAGE_EPOCH=$(date -d "$MESSAGE_TS" +%s 2>/dev/null || echo "")
+        fi
+        
+        # Extract Kafka timestamp
+        KAFKA_EPOCH=""
+        if [[ "$KAFKA_TS" == *":"* ]]; then
+          # Format like CreateTime:1747901730393 (milliseconds)
+          KAFKA_MS=$(echo "$KAFKA_TS" | cut -d':' -f2)
+          KAFKA_EPOCH=$((KAFKA_MS / 1000))
+        fi
+        
         CURRENT_EPOCH=$(date +%s)
         
-        if [ -n "$MESSAGE_EPOCH" ] && [ -n "$KAFKA_EPOCH" ] && [ "$KAFKA_EPOCH" != "" ]; then
+        if [ -n "$MESSAGE_EPOCH" ] && [ -n "$KAFKA_EPOCH" ]; then
           # Calculate delays
           PRODUCER_DELAY=$((KAFKA_EPOCH - MESSAGE_EPOCH))
           CONSUMER_DELAY=$((CURRENT_EPOCH - KAFKA_EPOCH))
@@ -147,7 +145,7 @@ check_kafka_metrics() {
           echo "  - Kafka timestamp: $KAFKA_TS"
         fi
       else
-        echo "  - No timestamp found in message"
+        echo "  - No valid timestamp found in message"
       fi
     else
       echo "  - No timestamp field found in message"
